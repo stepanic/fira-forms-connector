@@ -150,10 +150,11 @@ function submissionToPayload(submission: any, config: any): WebshopOrderModel {
     webshopOrderId: Math.floor(Math.random() * 1000000),
     webshopType: 'CUSTOM',
     webshopEvent: 'google_forms_registration',
-    webshopOrderNumber: `GF-${Date.now()}`,
+    // webshopOrderNumber: `GF-${Date.now()}`,
+    // webshopOrderNumber: `GF-${submission.timestamp}`,
     invoiceType: config.invoiceType || 'PONUDA',
     paymentGatewayCode: 'google-forms',
-    paymentGatewayName: 'Google Forms',
+    // paymentGatewayName: 'Google Forms',
     createdAt: createdAt,
     dueDate: dueDateStr,
     currency: config.currency || 'EUR',
@@ -172,15 +173,15 @@ function submissionToPayload(submission: any, config: any): WebshopOrderModel {
     },
     shippingAddress: {
       name: submission.nameAndSurname,
-      city: city,
-      country: country
+      city: 'Osijek',  // Delivery place
+      country: 'HR'
     },
     taxValue: taxValue,
     brutto: brutto,
     netto: netto,
     lineItems: [
       {
-        name: config.serviceName || 'Registracija za susret',
+        name: config.serviceName || 'Kotizacija za Međunarodni susret Zagreb',
         description: `Registracija sudionika: ${submission.nameAndSurname}`,
         lineItemId: 'REG-001',
         price: payment,
@@ -192,14 +193,15 @@ function submissionToPayload(submission: any, config: any): WebshopOrderModel {
     internalNote: internalNote,
     paymentType: config.paymentType || 'TRANSAKCIJSKI',
     discounts: [],
-    totalShipping: {
-      name: 'Shipping',
-      price: 0,
-      quantity: 1,
-      unit: 'usluga',
-      taxRate: taxRate
-    },
-    termsHR: ''
+    // totalShipping: {
+    //   name: 'Shipping',
+    //   price: 0,
+    //   quantity: 1,
+    //   unit: 'usluga',
+    //   taxRate: taxRate
+    // },
+    // totalShipping: {},
+    termsHR: 'Oslobođeno od plaćanja PDV-a sukladno čl. 90. st. 1. Zakona o porezu na dodanu vrijednost.'
   };
 
   return payload;
@@ -467,8 +469,8 @@ async function main() {
     paymentType: process.env.DEFAULT_PAYMENT_TYPE || 'TRANSAKCIJSKI',
     vatEnabled: process.env.VAT_ENABLED === 'true',
     defaultTaxRate: parseFloat(process.env.DEFAULT_TAX_RATE || '0.25'),
-    defaultPrice: parseFloat(process.env.DEFAULT_PRICE || '100'),
-    serviceName: process.env.DEFAULT_SERVICE_NAME || 'Registracija za susret'
+    defaultPrice: parseFloat(process.env.DEFAULT_PRICE || '80'),
+    serviceName: process.env.DEFAULT_SERVICE_NAME || 'Kotizacija za Međunarodni susret Zagreb'
   };
 
   console.log(chalk.blue('⚙️  Configuration:'));
