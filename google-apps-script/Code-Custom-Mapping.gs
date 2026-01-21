@@ -4,14 +4,55 @@
  * Prilagođeno za vaš Google Form sa stupcima:
  * - Vremenska oznaka, E-adresa, Payment, Name and surname, Gender, City and Country, itd.
  *
- * Ovaj kod koristi Payment stupac za cijenu i stvara račun za registraciju na susret.
+ * VAŽNO: Ovaj kod koristi JSON body method (ne query param) i FIRA-Api-Key header.
+ * Testirano i radi s FIRA API-jem.
  */
+
+// ============================================================================
+// KONFIGURACIJA - PRILAGODITE SVOJE POSTAVKE OVDJE
+// ============================================================================
+var CONFIG = {
+  // Naziv usluge na računu
+  SERVICE_NAME: 'Kotizacija za Međunarodni susret Zagreb',
+
+  // Default cijena ako Payment stupac nije popunjen
+  DEFAULT_PRICE: 80,
+
+  // Mjesto isporuke (delivery place na računu)
+  DELIVERY_PLACE: 'Osijek',
+
+  // Tip dokumenta: 'PONUDA', 'RAČUN', ili 'FISKALNI_RAČUN'
+  DEFAULT_INVOICE_TYPE: 'PONUDA',
+
+  // Valuta
+  DEFAULT_CURRENCY: 'EUR',
+
+  // Način plaćanja: 'GOTOVINA', 'TRANSAKCIJSKI', 'KARTICA'
+  DEFAULT_PAYMENT_TYPE: 'TRANSAKCIJSKI',
+
+  // PDV postavke (false = nije u sustavu PDV-a)
+  VAT_ENABLED: false,
+  DEFAULT_TAX_RATE: 0.25,
+
+  // Klauzula za oslobođenje PDV-a
+  TERMS_HR: 'Oslobođeno od plaćanja PDV-a sukladno čl. 90. st. 1. Zakona o porezu na dodanu vrijednost.',
+
+  // Max duljina internalNote (FIRA DB limit)
+  MAX_INTERNAL_NOTE_LENGTH: 250,
+
+  // Default država
+  DEFAULT_COUNTRY: 'HR'
+};
+
+// ============================================================================
+// MENU I SETUP FUNKCIJE
+// ============================================================================
 
 /**
  * Add custom menu when sheet opens
  */
 function onOpen() {
-  const ui = SpreadsheetApp.getUi();
+  var ui = SpreadsheetApp.getUi();
   ui.createMenu('FIRA Actions')
     .addItem('Napravi račun u FIRA', 'createFiraInvoice')
     .addSeparator()
@@ -24,16 +65,16 @@ function onOpen() {
  * Setup wizard - configure FIRA API key
  */
 function setupFiraIntegration() {
-  const ui = SpreadsheetApp.getUi();
+  var ui = SpreadsheetApp.getUi();
 
-  const result = ui.prompt(
+  var result = ui.prompt(
     'FIRA.finance API Konfiguracija',
     'Unesite vaš FIRA API ključ:\n(Preuzmite ga sa https://app.fira.finance/settings/integrations)',
     ui.ButtonSet.OK_CANCEL
   );
 
   if (result.getSelectedButton() === ui.Button.OK) {
-    const apiKey = result.getResponseText().trim();
+    var apiKey = result.getResponseText().trim();
 
     if (apiKey) {
       PropertiesService.getScriptProperties().setProperty('FIRA_API_KEY', apiKey);
@@ -45,13 +86,35 @@ function setupFiraIntegration() {
 }
 
 /**
+ * Show current configuration
+ */
+function showConfiguration() {
+  var ui = SpreadsheetApp.getUi();
+  var apiKey = PropertiesService.getScriptProperties().getProperty('FIRA_API_KEY');
+
+  var configText =
+    'Naziv usluge: ' + CONFIG.SERVICE_NAME + '\n' +
+    'Default cijena: ' + CONFIG.DEFAULT_PRICE + ' ' + CONFIG.DEFAULT_CURRENCY + '\n' +
+    'Mjesto isporuke: ' + CONFIG.DELIVERY_PLACE + '\n' +
+    'Tip dokumenta: ' + CONFIG.DEFAULT_INVOICE_TYPE + '\n' +
+    'PDV omogućen: ' + (CONFIG.VAT_ENABLED ? 'Da' : 'Ne') + '\n' +
+    'API ključ: ' + (apiKey ? '***' + apiKey.slice(-4) : 'Nije postavljen');
+
+  ui.alert('Trenutne postavke', configText, ui.ButtonSet.OK);
+}
+
+// ============================================================================
+// GLAVNE FUNKCIJE
+// ============================================================================
+
+/**
  * Main function: Create invoice in FIRA from selected row
  */
 function createFiraInvoice() {
-  const ui = SpreadsheetApp.getUi();
-  const sheet = SpreadsheetApp.getActiveSheet();
-  const activeRange = sheet.getActiveRange();
-  const row = activeRange.getRow();
+  var ui = SpreadsheetApp.getUi();
+  var sheet = SpreadsheetApp.getActiveSheet();
+  var activeRange = sheet.getActiveRange();
+  var row = activeRange.getRow();
 
   // Check if a valid row is selected (not header)
   if (row <= 1) {
@@ -59,10 +122,10 @@ function createFiraInvoice() {
     return;
   }
 
-  // Get configuration
-  const config = getConfiguration();
+  // Get API key
+  var apiKey = PropertiesService.getScriptProperties().getProperty('FIRA_API_KEY');
 
-  if (!config.apiKey) {
+  if (!apiKey) {
     ui.alert(
       'Potrebna konfiguracija',
       'Molimo prvo postavite FIRA API ključ.\nIdite na: FIRA Actions → Postavi API ključ',
@@ -76,22 +139,25 @@ function createFiraInvoice() {
     SpreadsheetApp.getActiveSpreadsheet().toast('Stvaram račun u FIRA...', 'Obrada', -1);
 
     // Get row data
-    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-    const rowData = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var rowData = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
 
     // Build payload from row
-    const payload = mapRowToPayload(headers, rowData, config);
+    var payload = mapRowToPayload(headers, rowData);
 
     // Validate required fields
-    const validation = validatePayload(payload);
+    var validation = validatePayload(payload);
     if (!validation.valid) {
       ui.alert('Greška validacije', validation.error, ui.ButtonSet.OK);
       SpreadsheetApp.getActiveSpreadsheet().toast('Validacija nije uspjela', 'Greška', 3);
       return;
     }
 
+    // Log payload for debugging
+    Logger.log('Payload: ' + JSON.stringify(payload, null, 2));
+
     // Send to FIRA
-    const response = sendToFira(payload, config);
+    var response = sendToFira(payload, apiKey);
 
     // Mark row as processed
     markRowAsProcessed(sheet, row, 'SUCCESS', new Date());
@@ -122,20 +188,18 @@ function createFiraInvoice() {
   }
 }
 
+// ============================================================================
+// PAYLOAD MAPPING
+// ============================================================================
+
 /**
  * Map sheet row to FIRA webhook payload
  *
- * Mapiranje specifično za vaše stupce:
- * - Vremenska oznaka → createdAt
- * - E-adresa → billingAddress.email
- * - Payment → lineItems[].price (cijena registracije)
- * - Name and surname → billingAddress.name
- * - City and Country → billingAddress.city
- * - Phone number → billingAddress.phone
+ * VAŽNO: Ova verzija koristi istu strukturu kao testirani CLI koji radi!
  */
-function mapRowToPayload(headers, rowData, config) {
+function mapRowToPayload(headers, rowData) {
   // Create a map of column names to values
-  const data = {};
+  var data = {};
   headers.forEach(function(header, index) {
     data[header] = rowData[index];
   });
@@ -149,138 +213,179 @@ function mapRowToPayload(headers, rowData, config) {
   // Helper function to parse number
   function getNumber(key, defaultValue) {
     if (defaultValue === undefined) defaultValue = 0;
-    const value = getValue(key, defaultValue);
+    var value = getValue(key, defaultValue);
     return typeof value === 'number' ? value : parseFloat(value) || defaultValue;
   }
 
   // Extract data from your specific columns
-  const timestamp = getValue('Vremenska oznaka', new Date());
-  const email = getValue('E-adresa');
-  const payment = getNumber('Payment', 0);
-  const nameAndSurname = getValue('Name and surname (Ime i prezime)');
-  const cityAndCountry = getValue('City and Country (Mjesto i država)');
-  const phone = getValue('Phone number (Kontakt broj)');
-  const gender = getValue('Gender (Spol)');
-  const yearOfBirth = getValue('Year of birth (Godina rođenja)');
-  const occupation = getValue('Occupation / profession / job (Zanimanje/profesija/posao)');
+  var email = getValue('E-adresa');
+  var payment = getNumber('Payment', CONFIG.DEFAULT_PRICE);
+  var nameAndSurname = getValue('Name and surname (Ime i prezime)');
+  var cityAndCountry = getValue('City and Country (Mjesto i država)');
+  var phone = getValue('Phone number (Kontakt broj)');
+  var gender = getValue('Gender (Spol)');
+  var yearOfBirth = getValue('Year of birth (Godina rođenja)');
+  var occupation = getValue('Occupation / profession / job (Zanimanje/profesija/posao)');
 
   // Parse City and Country (format: "Zagreb, Croatia" → city: Zagreb, country: HR)
-  let city = '';
-  let country = config.defaultCountry;
-  if (cityAndCountry) {
-    const parts = cityAndCountry.split(',');
-    if (parts.length > 0) {
-      city = parts[0].trim();
-    }
-    if (parts.length > 1) {
-      const countryName = parts[1].trim().toLowerCase();
-      // Map country names to codes
-      if (countryName.includes('croat') || countryName.includes('hrvat')) {
-        country = 'HR';
-      } else if (countryName.includes('german') || countryName.includes('njemač')) {
-        country = 'DE';
-      } else if (countryName.includes('austri') || countryName.includes('austri')) {
-        country = 'AT';
-      }
-      // Add more country mappings as needed
-    }
-  }
+  var cityCountryParsed = parseCityAndCountry(cityAndCountry);
+  var city = cityCountryParsed.city;
+  var country = cityCountryParsed.country;
 
-  // Build line items - in your case, it's registration fee
-  const lineItems = [];
-  const itemPrice = payment || config.defaultPrice || 0;
-  const itemTaxRate = config.defaultTaxRate;
+  // VAT/PDV settings
+  var vatEnabled = CONFIG.VAT_ENABLED;
+  var taxRate = vatEnabled ? CONFIG.DEFAULT_TAX_RATE : 0;
 
-  if (itemPrice > 0) {
-    lineItems.push({
-      name: config.defaultServiceName || 'Registracija za susret',
-      description: 'Registracija sudionika: ' + nameAndSurname,
-      lineItemId: 'REG-001',
-      price: itemPrice,
-      quantity: 1,
-      unit: 'usluga',
-      taxRate: itemTaxRate
-    });
-  }
+  // Calculate totals (no tax if VAT not enabled)
+  var netto = payment;
+  var taxValue = vatEnabled ? netto * taxRate : 0;
+  var brutto = netto + taxValue;
 
-  // Calculate totals
-  const netto = itemPrice * 1;
-  const taxValue = netto * itemTaxRate;
-  const brutto = netto + taxValue;
+  // Calculate dates
+  var now = new Date();
+  var createdAt = formatDateTimeForFira(now);
 
-  // Build billing address
-  const billingAddress = {
-    name: nameAndSurname,
-    email: email,
-    city: city,
-    country: country,
-    phone: phone,
-    address1: '', // Not provided in your form
-    zipCode: '', // Not provided in your form
-    company: '', // Not provided in your form
-    oib: '', // Not provided in your form
-    vatNumber: '' // Not provided in your form
-  };
-
-  // Parse timestamp
-  let createdAt = new Date();
-  if (timestamp) {
-    createdAt = new Date(timestamp);
-  }
-
-  // Calculate due date (14 days from now)
-  const dueDate = new Date();
+  var dueDate = new Date(now);
   dueDate.setDate(dueDate.getDate() + 14);
+  var dueDateStr = formatDateForFira(dueDate);
 
-  // Build internal note with additional info
-  const internalNote = [
+  // Build internal note (limited to 250 chars due to FIRA API database limit)
+  var internalNoteParts = [
     'Registracija iz Google Forms',
-    'Spol: ' + gender,
-    'Godina rođenja: ' + yearOfBirth,
-    'Zanimanje: ' + occupation
-  ].filter(function(line) { return line.split(':')[1].trim() !== ''; }).join('\n');
+    gender ? 'Spol: ' + gender : '',
+    yearOfBirth ? 'Godina rođenja: ' + yearOfBirth : '',
+    occupation ? 'Zanimanje: ' + occupation : ''
+  ];
 
-  // Build complete payload
-  const payload = {
+  var internalNote = internalNoteParts.filter(function(p) { return p; }).join('\n');
+  if (internalNote.length > CONFIG.MAX_INTERNAL_NOTE_LENGTH) {
+    internalNote = internalNote.substring(0, CONFIG.MAX_INTERNAL_NOTE_LENGTH - 3) + '...';
+  }
+
+  // Build complete payload - EXACT SAME STRUCTURE AS WORKING CLI TEST
+  var payload = {
     webshopOrderId: Math.floor(Math.random() * 1000000),
     webshopType: 'CUSTOM',
     webshopEvent: 'google_forms_registration',
-    webshopOrderNumber: 'GF-' + createdAt.getTime(),
-    invoiceType: config.defaultInvoiceType,
+    invoiceType: CONFIG.DEFAULT_INVOICE_TYPE,
     paymentGatewayCode: 'google-forms',
-    paymentGatewayName: 'Google Forms',
-    createdAt: createdAt.toISOString(),
-    dueDate: formatDate(dueDate),
-    currency: config.defaultCurrency,
-    taxesIncluded: true,
-    billingAddress: billingAddress,
+    createdAt: createdAt,
+    dueDate: dueDateStr,
+    currency: CONFIG.DEFAULT_CURRENCY,
+    taxesIncluded: vatEnabled,
+    billingAddress: {
+      name: nameAndSurname,
+      email: email,
+      city: city,
+      country: country,
+      phone: phone || '',
+      address1: '',
+      zipCode: '',
+      company: '',
+      oib: '',
+      vatNumber: ''
+    },
+    shippingAddress: {
+      name: nameAndSurname,
+      city: CONFIG.DELIVERY_PLACE,
+      country: 'HR'
+    },
     taxValue: taxValue,
     brutto: brutto,
     netto: netto,
-    lineItems: lineItems,
+    lineItems: [
+      {
+        name: CONFIG.SERVICE_NAME,
+        description: 'Registracija sudionika: ' + nameAndSurname,
+        lineItemId: 'REG-001',
+        price: payment,
+        quantity: 1,
+        unit: 'usluga',
+        taxRate: taxRate
+      }
+    ],
     internalNote: internalNote,
-    paymentType: config.defaultPaymentType,
+    paymentType: CONFIG.DEFAULT_PAYMENT_TYPE,
     discounts: [],
-    totalShipping: {
-      name: 'Shipping',
-      price: 0,
-      quantity: 1,
-      unit: 'usluga',
-      taxRate: itemTaxRate
-    }
+    termsHR: CONFIG.TERMS_HR
   };
 
   return payload;
 }
 
 /**
+ * Parse City and Country string
+ * Format: "Zagreb, Croatia" → { city: "Zagreb", country: "HR" }
+ */
+function parseCityAndCountry(cityAndCountry) {
+  var city = '';
+  var country = CONFIG.DEFAULT_COUNTRY;
+
+  if (!cityAndCountry) {
+    return { city: city, country: country };
+  }
+
+  var parts = cityAndCountry.split(',');
+
+  if (parts.length > 0) {
+    city = parts[0].trim();
+  }
+
+  if (parts.length > 1) {
+    var countryName = parts[1].trim().toLowerCase();
+
+    // Map country names to ISO codes
+    if (countryName.indexOf('croat') >= 0 || countryName.indexOf('hrvat') >= 0) {
+      country = 'HR';
+    } else if (countryName.indexOf('german') >= 0 || countryName.indexOf('njemač') >= 0) {
+      country = 'DE';
+    } else if (countryName.indexOf('austri') >= 0) {
+      country = 'AT';
+    } else if (countryName.indexOf('sloven') >= 0) {
+      country = 'SI';
+    } else if (countryName.indexOf('serb') >= 0 || countryName.indexOf('srb') >= 0) {
+      country = 'RS';
+    } else if (countryName.indexOf('bosn') >= 0) {
+      country = 'BA';
+    } else if (countryName.indexOf('italy') >= 0 || countryName.indexOf('italij') >= 0) {
+      country = 'IT';
+    }
+  }
+
+  return { city: city, country: country };
+}
+
+// ============================================================================
+// DATE FORMATTING
+// ============================================================================
+
+/**
+ * Format date to ISO without milliseconds (FIRA API format)
+ * Output: "2025-11-11T22:56:00Z"
+ */
+function formatDateTimeForFira(date) {
+  return date.toISOString().replace(/\.\d{3}Z$/, 'Z');
+}
+
+/**
+ * Format date as YYYY-MM-DD
+ */
+function formatDateForFira(date) {
+  return date.toISOString().split('T')[0];
+}
+
+// ============================================================================
+// VALIDATION
+// ============================================================================
+
+/**
  * Validate payload before sending
  */
 function validatePayload(payload) {
-  const errors = [];
+  var errors = [];
 
   if (!payload.lineItems || payload.lineItems.length === 0) {
-    errors.push('Potrebna je barem jedna stavka (provjerite Payment stupac)');
+    errors.push('Potrebna je barem jedna stavka');
   }
 
   if (!payload.billingAddress || !payload.billingAddress.name) {
@@ -292,7 +397,7 @@ function validatePayload(payload) {
   }
 
   if (payload.lineItems && payload.lineItems.length > 0 && payload.lineItems[0].price <= 0) {
-    errors.push('Cijena mora biti veća od 0 (provjerite Payment stupac)');
+    errors.push('Cijena mora biti veća od 0');
   }
 
   if (errors.length > 0) {
@@ -305,27 +410,35 @@ function validatePayload(payload) {
   return { valid: true };
 }
 
+// ============================================================================
+// FIRA API COMMUNICATION
+// ============================================================================
+
 /**
  * Send payload to FIRA API
+ *
+ * VAŽNO: Koristi JSON body method i FIRA-Api-Key header (testirano i radi!)
  */
-function sendToFira(payload, config) {
-  const url = config.apiUrl + '/api/v1/webshop/order/custom';
+function sendToFira(payload, apiKey) {
+  var url = 'https://app.fira.finance/api/v1/webshop/order/custom';
 
-  // FIRA API expects the payload as a query parameter
-  const fullUrl = url + '?webshopModel=' + encodeURIComponent(JSON.stringify(payload));
-
-  const options = {
+  var options = {
     method: 'post',
+    contentType: 'application/json',
     headers: {
-      'Authorization': 'Bearer ' + config.apiKey,
-      'Content-Type': 'application/json'
+      'FIRA-Api-Key': apiKey
     },
+    payload: JSON.stringify(payload),
     muteHttpExceptions: true
   };
 
-  const response = UrlFetchApp.fetch(fullUrl, options);
-  const responseCode = response.getResponseCode();
-  const responseBody = response.getContentText();
+  Logger.log('Sending request to: ' + url);
+  Logger.log('Headers: FIRA-Api-Key: ***' + apiKey.slice(-4));
+  Logger.log('Payload length: ' + options.payload.length + ' chars');
+
+  var response = UrlFetchApp.fetch(url, options);
+  var responseCode = response.getResponseCode();
+  var responseBody = response.getContentText();
 
   Logger.log('FIRA API Response Code: ' + responseCode);
   Logger.log('FIRA API Response Body: ' + responseBody);
@@ -335,62 +448,46 @@ function sendToFira(payload, config) {
   } else if (responseCode === 401) {
     throw new Error('Autentifikacija nije uspjela - provjerite API ključ');
   } else if (responseCode === 400) {
-    const errorData = JSON.parse(responseBody);
-    const errorMessage = errorData.message || 'Neispravni podaci';
-    throw new Error('Greška validacije: ' + errorMessage);
+    throw new Error('Neispravni podaci: ' + responseBody);
+  } else if (responseCode === 500) {
+    throw new Error('FIRA server greška: ' + responseBody);
   } else {
     throw new Error('API greška (HTTP ' + responseCode + '): ' + responseBody);
   }
 }
 
+// ============================================================================
+// ROW STATUS TRACKING
+// ============================================================================
+
 /**
  * Mark row as processed with status and timestamp
  */
 function markRowAsProcessed(sheet, row, status, timestamp) {
-  // Find or create status column (look for AKCIJA_FIRA_RACUN column)
-  const lastCol = sheet.getLastColumn();
-  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var lastCol = sheet.getLastColumn();
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
 
-  let statusCol = -1;
-  let timestampCol = -1;
+  var statusCol = -1;
+  var timestampCol = -1;
 
-  // Find AKCIJA_FIRA_RACUN column
-  for (let i = 0; i < headers.length; i++) {
-    if (headers[i] === 'AKCIJA_FIRA_RACUN') {
+  // Find existing status columns
+  for (var i = 0; i < headers.length; i++) {
+    if (headers[i] === 'FIRA Status') {
       statusCol = i + 1;
-      timestampCol = i + 2; // Next column for timestamp
-      break;
+    }
+    if (headers[i] === 'FIRA Timestamp') {
+      timestampCol = i + 1;
     }
   }
 
-  // If not found, find FIRA Status column
-  if (statusCol === -1) {
-    for (let i = 0; i < headers.length; i++) {
-      if (headers[i] === 'FIRA Status') {
-        statusCol = i + 1;
-        break;
-      }
-    }
-  }
-
-  // If still not found, create new columns
+  // Create columns if they don't exist
   if (statusCol === -1) {
     statusCol = lastCol + 1;
     sheet.getRange(1, statusCol).setValue('FIRA Status');
   }
 
-  // Find or create timestamp column
   if (timestampCol === -1) {
-    for (let i = 0; i < headers.length; i++) {
-      if (headers[i] === 'FIRA Timestamp') {
-        timestampCol = i + 1;
-        break;
-      }
-    }
-  }
-
-  if (timestampCol === -1) {
-    timestampCol = statusCol + 1;
+    timestampCol = (statusCol === lastCol + 1) ? lastCol + 2 : lastCol + 1;
     sheet.getRange(1, timestampCol).setValue('FIRA Timestamp');
   }
 
@@ -404,14 +501,4 @@ function markRowAsProcessed(sheet, row, status, timestamp) {
   } else {
     sheet.getRange(row, statusCol).setBackground('#f4cccc');
   }
-}
-
-/**
- * Format date as YYYY-MM-DD
- */
-function formatDate(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return year + '-' + month + '-' + day;
 }
