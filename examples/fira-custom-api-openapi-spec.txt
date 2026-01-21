@@ -1,0 +1,241 @@
+openapi: 3.0.1
+info:
+  title: FIRA CUSTOM WEBSHOP API
+  description: Hook for custom webshops
+  version: v1.0.0
+servers:
+  # Added by API Auto Mocking Plugin
+  - description: SwaggerHub API Auto Mocking
+    url: https://virtserver.swaggerhub.com/FIRAFinance/Custom_webshop/v1.0.0
+  - url: https://app.fira.finance
+    description: Production server URL
+paths:
+  /api/v1/webshop/order/custom:
+    post:
+      tags:
+        - webshop-controller
+      operationId: createCustomnWebshop
+      parameters:
+        - name: webshopModel
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/WebshopOrderModel'
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+        '400':
+          description: Bad Request
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/ErrorDetails'
+        '401':
+          description: Unauthorized
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/ErrorDetails'
+        '402':
+          description: Payment Required
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/ErrorDetails'
+        '403':
+          description: Forbidden
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/ErrorDetails'
+        '404':
+          description: Not Found
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/ErrorDetails'
+        '500':
+          description: Internal Server Error
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/ErrorDetails'
+components:
+  schemas:
+    ErrorDetails:
+      type: object
+      properties:
+        timestamp:
+          type: string
+        message:
+          type: string
+        details:
+          type: string
+        validationErrors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ViolationError'
+    ViolationError:
+      type: object
+      properties:
+        fieldName:
+          type: string
+        message:
+          type: string
+        rejectedValue:
+          type: string
+    WebshopCustomerAddressModel:
+      description: If you have checked flag in FIRA settings to send an email invoice, we read email of the client in the email field of billingAddress object. 
+      type: object
+      properties:
+        name:
+          type: string
+        address1:
+          type: string
+        address2:
+          type: string
+        city:
+          type: string
+        country:
+          description: Use abbreviations such as HR, AT, DE, etc..
+          type: string
+        phone:
+          type: string
+        zipCode:
+          type: string
+        email:
+          type: string
+        vatNumber:
+          type: string
+        oib:
+          type: string
+        company:
+          type: string
+    WebshopLineItemModel:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        lineItemId:
+          type: string
+        price:
+          type: number
+          format: double
+        quantity:
+          type: number
+          format: double
+        unit:
+          type: string
+        taxRate:
+          description: Use decimal format (0.25)
+          type: number
+          format: double
+        kpdCode:
+          type: string
+          description: Use this field if you want to send KPD code directly for the line item
+        productCode:
+          type: string
+          description: If you want to match the product from FIRA database (for example take KPD of that product). User the same prodcut code as in FIRA app.
+    WebshopOrderModel:
+      type: object
+      properties:
+        webshopOrderId:
+          type: integer
+          format: int64
+        webshopType:
+          description: CUSTOM
+          type: string
+          enum:
+            - WOO_COMMERCE
+            - SHOPIFY
+            - CUSTOM
+        webshopEvent:
+          type: string
+        webshopOrderNumber:
+          type: string
+        invoiceType:
+          type: string
+          description: FISKALNI_RAČUN (Fiscalized invoice) are for Croatian SMEs only. If you are using FIKSALNI_RAČUN please have Fiscal settings in your SME's FIRA settings set up. Ponuda is Offer and RAČUN is invoice. For testing purpouses best is to go with PONUDA (offer) while setting things up
+          enum:
+            - PONUDA
+            - RAČUN
+            - FISKALNI_RAČUN
+        paymentGatewayCode:
+          type: string
+        paymentGatewayName:
+          type: string
+        createdAt:
+          description: Format is 'YYYY-MM-DDTHH:mm:ssZ', example '2025-11-08T16:43:41Z'
+          type: string
+          format: date-time
+        dueDate:
+          description: Format is 'YYYY-MM-DD', example '2025-11-08'
+          type: string
+          format: date
+        validTo:
+          description: Format is 'YYYY-MM-DD', example '2025-11-08'
+          type: string
+          format: date
+        currency:
+          description: EUR, USD, AUD, BAM, etc..
+          type: string
+        taxesIncluded:
+          type: boolean
+        billingAddress:
+          $ref: '#/components/schemas/WebshopCustomerAddressModel'
+        shippingAddress:
+          description: Mostly important for the city in the Delivery Place field in the PDF. If you have delivery place set up in FIRA Custom Webshop settings, that field will take priority and you don't need to use the shippingAddress object at all
+          allOf:
+              - $ref: '#/components/schemas/WebshopCustomerAddressModel'
+        taxValue:
+          type: number
+          format: double
+        brutto:
+          type: number
+          format: double
+        netto:
+          type: number
+          format: double
+        discounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebshopLineItemModel'
+        totalShipping:
+          $ref: '#/components/schemas/WebshopLineItemModel'
+        customerLocale:
+          type: string
+        lineItems:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebshopLineItemModel'
+        note:
+          description: Deprecated! Please use internalNote for internal Note, or termsHR, termsEN, termsDE for terms visible in the invoice
+          type: string
+        internalNote:
+          description: Visible only to the SME user in FIRA app. Not visible in the PDF invoice.
+          type: string
+        taxRate:
+          description: Deprecated, don't use this field.
+          type: number
+          format: double
+        paymentType:
+          type: string
+          enum:
+            - GOTOVINA
+            - TRANSAKCIJSKI
+            - KARTICA
+        termsHR:
+          type: string
+          description: If billing address -> country is HR and you want to use your own terms instead of default SME terms, then use this field to populate terms in the invoice. It accepts html elements if you want to bold something, etc.
+        termsEN:
+          type: string
+          description: If billing address -> country is not HR, DE or AT and you want to use your own terms instead of default SME terms, then use this field to populate terms in the invoice. It accepts html elements if you want to bold something, etc.
+        termsDE:
+          type: string
+          description: If billing address -> country is AT or DE and you want to use your own terms instead of default SME terms, then use this field to populate terms in the invoice. It accepts html elements if you want to bold something, etc.

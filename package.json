@@ -8,6 +8,7 @@
     "test:webhook": "ts-node cli/test-webhook.ts",
     "test:sample": "ts-node cli/test-webhook.ts --sample",
     "test:real": "ts-node cli/test-real-submission.ts",
+    "test:payload": "ts-node cli/test-sample-payload.ts",
     "lint": "eslint . --ext .ts",
     "format": "prettier --write \"**/*.{ts,js,json,md}\""
   },

@@ -92,36 +92,19 @@ function parseCityAndCountry(cityAndCountry: string): { city: string; country: s
 }
 
 /**
- * Parse timestamp from Google Forms format
- * Format: "21.1.2026. 12:10:13" -> ISO 8601
+ * Format date to ISO without milliseconds (FIRA API format)
+ * Input: Date object
+ * Output: "2025-11-11T22:56:00Z"
  */
-function parseTimestamp(timestamp: string): string {
-  if (!timestamp) {
-    return new Date().toISOString();
-  }
+function formatDateTimeForFira(date: Date): string {
+  return date.toISOString().replace(/\.\d{3}Z$/, 'Z');
+}
 
-  try {
-    // Format: DD.M.YYYY. HH:MM:SS
-    const parts = timestamp.split(' ');
-    const datePart = parts[0]; // "21.1.2026."
-    const timePart = parts[1] || '00:00:00'; // "12:10:13"
-
-    const dateParts = datePart.replace('.', '').split('.');
-    const day = parseInt(dateParts[0], 10);
-    const month = parseInt(dateParts[1], 10) - 1; // 0-indexed
-    const year = parseInt(dateParts[2], 10);
-
-    const timeParts = timePart.split(':');
-    const hours = parseInt(timeParts[0], 10);
-    const minutes = parseInt(timeParts[1], 10);
-    const seconds = parseInt(timeParts[2], 10);
-
-    const date = new Date(year, month, day, hours, minutes, seconds);
-    return date.toISOString();
-  } catch (error) {
-    console.warn(chalk.yellow('Warning: Could not parse timestamp, using current time'));
-    return new Date().toISOString();
-  }
+/**
+ * Format date to YYYY-MM-DD (FIRA API date format)
+ */
+function formatDateForFira(date: Date): string {
+  return date.toISOString().split('T')[0];
 }
 
 /**
@@ -129,37 +112,40 @@ function parseTimestamp(timestamp: string): string {
  */
 function submissionToPayload(submission: any, config: any): WebshopOrderModel {
   const { city, country } = parseCityAndCountry(submission.cityAndCountry);
-  const createdAt = parseTimestamp(submission.timestamp);
   const payment = parseFloat(submission.payment) || config.defaultPrice || 0;
-  const taxRate = config.defaultTaxRate || 0.25;
 
-  // Calculate totals
+  // Check if VAT/PDV is enabled (default: false for non-PDV businesses)
+  const vatEnabled = config.vatEnabled === true;
+  const taxRate = vatEnabled ? (config.defaultTaxRate || 0.25) : 0;
+
+  // Calculate totals (no tax if VAT not enabled)
   const netto = payment;
-  const taxValue = netto * taxRate;
+  const taxValue = vatEnabled ? netto * taxRate : 0;
   const brutto = netto + taxValue;
 
-  // Calculate due date (14 days from now)
-  const dueDate = new Date();
-  dueDate.setDate(dueDate.getDate() + 14);
-  const dueDateStr = dueDate.toISOString().split('T')[0];
+  // Calculate dates
+  const now = new Date();
+  const createdAt = formatDateTimeForFira(now);
 
-  // Build internal note
+  const dueDate = new Date(now);
+  dueDate.setDate(dueDate.getDate() + 14);
+  const dueDateStr = formatDateForFira(dueDate);
+
+  // Build internal note (limited to 250 chars due to FIRA API database limit)
+  const MAX_INTERNAL_NOTE_LENGTH = 250;
   const internalNoteParts = [
     'Registracija iz Google Forms',
     submission.gender ? `Spol: ${submission.gender}` : '',
     submission.yearOfBirth ? `Godina rođenja: ${submission.yearOfBirth}` : '',
-    submission.occupation ? `Zanimanje: ${submission.occupation}` : '',
-    submission.howDidYouFind ? `Kako saznali: ${submission.howDidYouFind}` : '',
-    submission.diet ? `Prehrana: ${submission.diet}` : '',
-    submission.experience ? `Iskustvo: ${submission.experience}` : '',
-    submission.whyRegistering ? `Razlog: ${submission.whyRegistering}` : '',
-    submission.expectations ? `Očekivanja: ${submission.expectations}` : '',
-    submission.questions ? `Pitanja: ${submission.questions}` : ''
+    submission.occupation ? `Zanimanje: ${submission.occupation}` : ''
   ];
 
-  const internalNote = internalNoteParts.filter(p => p).join('\n');
+  let internalNote = internalNoteParts.filter(p => p).join('\n');
+  if (internalNote.length > MAX_INTERNAL_NOTE_LENGTH) {
+    internalNote = internalNote.substring(0, MAX_INTERNAL_NOTE_LENGTH - 3) + '...';
+  }
 
-  // Build payload
+  // Build payload matching FIRA API spec exactly
   const payload: WebshopOrderModel = {
     webshopOrderId: Math.floor(Math.random() * 1000000),
     webshopType: 'CUSTOM',
@@ -171,18 +157,23 @@ function submissionToPayload(submission: any, config: any): WebshopOrderModel {
     createdAt: createdAt,
     dueDate: dueDateStr,
     currency: config.currency || 'EUR',
-    taxesIncluded: true,
+    taxesIncluded: vatEnabled,
     billingAddress: {
       name: submission.nameAndSurname,
       email: submission.email,
       city: city,
       country: country,
-      phone: submission.phone,
+      phone: submission.phone || '',
       address1: '',
       zipCode: '',
       company: '',
       oib: '',
       vatNumber: ''
+    },
+    shippingAddress: {
+      name: submission.nameAndSurname,
+      city: city,
+      country: country
     },
     taxValue: taxValue,
     brutto: brutto,
@@ -207,7 +198,8 @@ function submissionToPayload(submission: any, config: any): WebshopOrderModel {
       quantity: 1,
       unit: 'usluga',
       taxRate: taxRate
-    }
+    },
+    termsHR: ''
   };
 
   return payload;
@@ -219,6 +211,7 @@ function submissionToPayload(submission: any, config: any): WebshopOrderModel {
 async function sendWebhook(payload: WebshopOrderModel): Promise<void> {
   const apiKey = process.env.FIRA_API_KEY;
   const apiUrl = process.env.FIRA_API_URL || 'https://app.fira.finance';
+  const debugMode = process.env.DEBUG === 'true' || process.env.DEBUG === '1';
 
   if (!apiKey) {
     console.error(chalk.red('❌ Error: FIRA_API_KEY not found in environment variables'));
@@ -227,42 +220,174 @@ async function sendWebhook(payload: WebshopOrderModel): Promise<void> {
     process.exit(1);
   }
 
+  const endpoint = `${apiUrl}/api/v1/webshop/order/custom`;
+  const requestHeaders = {
+    'FIRA-Api-Key': apiKey,
+    'Content-Type': 'application/json'
+  };
+
   console.log(chalk.blue('🚀 Sending webhook to FIRA...'));
-  console.log(chalk.gray(`   Endpoint: ${apiUrl}/api/v1/webshop/order/custom`));
+  console.log(chalk.gray(`   Endpoint: ${endpoint}`));
   console.log(chalk.gray(`   Invoice Type: ${payload.invoiceType}`));
   console.log(chalk.gray(`   Customer: ${payload.billingAddress?.name}`));
   console.log(chalk.gray(`   Email: ${payload.billingAddress?.email}`));
   console.log(chalk.gray(`   Amount: ${payload.brutto} ${payload.currency}`));
   console.log('');
 
-  try {
-    const response = await axios.post(
-      `${apiUrl}/api/v1/webshop/order/custom`,
-      null,
-      {
-        params: {
-          webshopModel: JSON.stringify(payload)
-        },
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        timeout: 30000
-      }
-    );
+  // Prepare the JSON payload
+  const jsonPayload = JSON.stringify(payload);
+  const encodedPayload = encodeURIComponent(jsonPayload);
 
-    console.log(chalk.green('✅ Success! Invoice created in FIRA'));
+  // Debug: Show request details
+  if (debugMode) {
+    console.log(chalk.magenta('🔍 DEBUG - Request Details:'));
+    console.log(chalk.gray('─'.repeat(80)));
+    console.log(chalk.cyan('Request Headers:'));
+    console.log(chalk.gray(`   FIRA-Api-Key: ${apiKey.substring(0, 8)}...${apiKey.substring(apiKey.length - 4)} (${apiKey.length} chars)`));
+    console.log(chalk.gray(`   Content-Type: ${requestHeaders['Content-Type']}`));
+    console.log(chalk.cyan('API Key Info:'));
+    console.log(chalk.gray(`   Length: ${apiKey.length} characters`));
+    console.log(chalk.gray(`   First 8 chars: ${apiKey.substring(0, 8)}`));
+    console.log(chalk.gray(`   Last 4 chars: ${apiKey.substring(apiKey.length - 4)}`));
+    console.log(chalk.gray(`   Contains whitespace: ${/\s/.test(apiKey)}`));
+    console.log(chalk.gray(`   Contains newline: ${/[\r\n]/.test(apiKey)}`));
+    console.log(chalk.cyan('Payload Info:'));
+    console.log(chalk.gray(`   JSON length: ${jsonPayload.length} chars`));
+    console.log(chalk.gray(`   URL-encoded length: ${encodedPayload.length} chars`));
+    console.log(chalk.gray(`   Full URL length: ${endpoint.length + 14 + encodedPayload.length} chars`));
+    console.log(chalk.cyan('Full Request URL:'));
+    console.log(chalk.gray(`   ${endpoint}?webshopModel=${encodedPayload.substring(0, 200)}...`));
+    console.log(chalk.gray('─'.repeat(80)));
     console.log('');
-    console.log(chalk.bold('Response:'));
-    console.log(JSON.stringify(response.data, null, 2));
-    console.log('');
-    console.log(chalk.green('🎉 Check your FIRA dashboard: https://app.fira.finance'));
+  }
+
+  // Try different request methods based on env var
+  const useBodyMethod = process.env.FIRA_USE_BODY === 'true';
+
+  try {
+    let response;
+
+    if (useBodyMethod) {
+      // Method 2: Send JSON in request body
+      if (debugMode) {
+        console.log(chalk.cyan('Using method: JSON in request BODY'));
+      }
+      response = await axios.post(
+        endpoint,
+        payload,
+        {
+          headers: requestHeaders,
+          timeout: 30000,
+          validateStatus: () => true
+        }
+      );
+    } else {
+      // Method 1: Send JSON as query parameter (per OpenAPI spec)
+      if (debugMode) {
+        console.log(chalk.cyan('Using method: JSON in QUERY parameter'));
+      }
+      response = await axios.post(
+        endpoint,
+        null,
+        {
+          params: {
+            webshopModel: jsonPayload
+          },
+          headers: requestHeaders,
+          timeout: 30000,
+          validateStatus: () => true
+        }
+      );
+    }
+
+    // Debug: Show response details
+    if (debugMode) {
+      console.log(chalk.magenta('🔍 DEBUG - Response Details:'));
+      console.log(chalk.gray('─'.repeat(80)));
+      console.log(chalk.cyan('Response Status:'), response.status, response.statusText);
+      console.log(chalk.cyan('Response Headers:'));
+      Object.entries(response.headers).forEach(([key, value]) => {
+        console.log(chalk.gray(`   ${key}: ${value}`));
+      });
+      console.log(chalk.cyan('Response Data (raw):'));
+      console.log(chalk.gray(`   Type: ${typeof response.data}`));
+      console.log(chalk.gray(`   Value: ${JSON.stringify(response.data)}`));
+      console.log(chalk.gray('─'.repeat(80)));
+      console.log('');
+    }
+
+    // Check if request was successful
+    if (response.status >= 200 && response.status < 300) {
+      console.log(chalk.green('✅ Success! Invoice created in FIRA'));
+      console.log('');
+      console.log(chalk.bold('Response:'));
+      console.log(JSON.stringify(response.data, null, 2));
+      console.log('');
+      console.log(chalk.green('🎉 Check your FIRA dashboard: https://app.fira.finance'));
+    } else {
+      // Handle error responses
+      const status = response.status;
+      const errorData = response.data;
+
+      console.log(chalk.red('❌ Error: Failed to create invoice'));
+      console.log('');
+      console.log(chalk.yellow(`Status Code: ${status} ${response.statusText}`));
+
+      if (status === 401) {
+        console.log(chalk.red('Authentication failed - check your API key'));
+        console.log('');
+        console.log(chalk.yellow('Possible causes:'));
+        console.log(chalk.gray('  1. API key is invalid or expired'));
+        console.log(chalk.gray('  2. API key has extra whitespace or newlines'));
+        console.log(chalk.gray('  3. API key is for wrong environment (test vs production)'));
+        console.log(chalk.gray('  4. Bearer token format might be wrong'));
+        console.log('');
+        console.log(chalk.yellow('Try running with DEBUG=true for more details:'));
+        console.log(chalk.gray('  DEBUG=true npm run test:real'));
+      } else if (status === 400) {
+        console.log(chalk.red('Bad Request - validation errors:'));
+        if (errorData?.validationErrors) {
+          errorData.validationErrors.forEach((err: any) => {
+            console.log(chalk.gray(`  - ${err.fieldName}: ${err.message}`));
+          });
+        }
+      } else if (status === 403) {
+        console.log(chalk.red('Forbidden - API key may not have required permissions'));
+      } else if (status === 404) {
+        console.log(chalk.red('Not Found - endpoint may be incorrect'));
+      } else if (status >= 500) {
+        console.log(chalk.red('Server Error - FIRA API may be experiencing issues'));
+      }
+
+      console.log('');
+      console.log(chalk.bold('Response Headers:'));
+      const relevantHeaders = ['content-type', 'www-authenticate', 'x-request-id', 'x-error-code', 'x-error-message'];
+      relevantHeaders.forEach(header => {
+        if (response.headers[header]) {
+          console.log(chalk.gray(`  ${header}: ${response.headers[header]}`));
+        }
+      });
+
+      console.log('');
+      console.log(chalk.bold('Response Body:'));
+      if (errorData) {
+        if (typeof errorData === 'string') {
+          console.log(chalk.gray(errorData || '(empty string)'));
+        } else {
+          console.log(JSON.stringify(errorData, null, 2));
+        }
+      } else {
+        console.log(chalk.gray('(no response body)'));
+      }
+
+      process.exit(1);
+    }
 
   } catch (error) {
     if (axios.isAxiosError(error)) {
       const axiosError = error as AxiosError<ErrorDetails>;
 
-      console.log(chalk.red('❌ Error: Failed to create invoice'));
+      console.log(chalk.red('❌ Error: Request failed'));
       console.log('');
 
       if (axiosError.response) {
@@ -271,15 +396,17 @@ async function sendWebhook(payload: WebshopOrderModel): Promise<void> {
 
         console.log(chalk.yellow(`Status Code: ${status}`));
 
-        if (status === 401) {
-          console.log(chalk.red('Authentication failed - check your API key'));
-        } else if (status === 400) {
-          console.log(chalk.red('Bad Request - validation errors:'));
-          if (errorData?.validationErrors) {
-            errorData.validationErrors.forEach(err => {
-              console.log(chalk.gray(`  - ${err.fieldName}: ${err.message}`));
-            });
-          }
+        // Debug: Full response
+        if (debugMode) {
+          console.log(chalk.magenta('🔍 DEBUG - Error Response:'));
+          console.log(chalk.gray('─'.repeat(80)));
+          console.log(chalk.cyan('Response Headers:'));
+          Object.entries(axiosError.response.headers).forEach(([key, value]) => {
+            console.log(chalk.gray(`   ${key}: ${value}`));
+          });
+          console.log(chalk.cyan('Response Data:'));
+          console.log(JSON.stringify(errorData, null, 2));
+          console.log(chalk.gray('─'.repeat(80)));
         }
 
         console.log('');
@@ -289,6 +416,12 @@ async function sendWebhook(payload: WebshopOrderModel): Promise<void> {
       } else if (axiosError.request) {
         console.log(chalk.red('No response received from server'));
         console.log(chalk.gray('Check your internet connection and API URL'));
+
+        if (debugMode) {
+          console.log(chalk.magenta('🔍 DEBUG - Request that failed:'));
+          console.log(chalk.gray(`   Method: ${axiosError.request.method}`));
+          console.log(chalk.gray(`   Path: ${axiosError.request.path}`));
+        }
       } else {
         console.log(chalk.red(`Request setup error: ${axiosError.message}`));
       }
@@ -332,6 +465,7 @@ async function main() {
     invoiceType: process.env.DEFAULT_INVOICE_TYPE || 'PONUDA',
     currency: process.env.DEFAULT_CURRENCY || 'EUR',
     paymentType: process.env.DEFAULT_PAYMENT_TYPE || 'TRANSAKCIJSKI',
+    vatEnabled: process.env.VAT_ENABLED === 'true',
     defaultTaxRate: parseFloat(process.env.DEFAULT_TAX_RATE || '0.25'),
     defaultPrice: parseFloat(process.env.DEFAULT_PRICE || '100'),
     serviceName: process.env.DEFAULT_SERVICE_NAME || 'Registracija za susret'
@@ -340,7 +474,10 @@ async function main() {
   console.log(chalk.blue('⚙️  Configuration:'));
   console.log(chalk.gray('  Invoice Type: ' + config.invoiceType));
   console.log(chalk.gray('  Currency: ' + config.currency));
-  console.log(chalk.gray('  Tax Rate: ' + (config.defaultTaxRate * 100) + '%'));
+  console.log(chalk.gray('  VAT/PDV Enabled: ' + (config.vatEnabled ? 'Yes' : 'No')));
+  if (config.vatEnabled) {
+    console.log(chalk.gray('  Tax Rate: ' + (config.defaultTaxRate * 100) + '%'));
+  }
   console.log(chalk.gray('  Default Price: ' + config.defaultPrice + ' ' + config.currency));
   console.log(chalk.gray('  Service Name: ' + config.serviceName));
   console.log('');
@@ -353,7 +490,11 @@ async function main() {
   console.log(chalk.gray('  Order ID: ' + payload.webshopOrderId));
   console.log(chalk.gray('  Order Number: ' + payload.webshopOrderNumber));
   console.log(chalk.gray('  Netto: ' + payload.netto + ' ' + payload.currency));
-  console.log(chalk.gray('  Tax: ' + payload.taxValue + ' ' + payload.currency));
+  if (config.vatEnabled) {
+    console.log(chalk.gray('  Tax: ' + payload.taxValue + ' ' + payload.currency));
+  } else {
+    console.log(chalk.gray('  Tax: N/A (VAT not enabled)'));
+  }
   console.log(chalk.gray('  Brutto: ' + payload.brutto + ' ' + payload.currency));
   console.log('');
 
