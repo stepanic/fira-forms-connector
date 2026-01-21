@@ -22,7 +22,8 @@ var CONFIG = {
   DELIVERY_PLACE: 'Osijek',
 
   // Tip dokumenta: 'PONUDA', 'RAČUN', ili 'FISKALNI_RAČUN'
-  DEFAULT_INVOICE_TYPE: 'PONUDA',
+  //DEFAULT_INVOICE_TYPE: 'PONUDA',
+  DEFAULT_INVOICE_TYPE: 'RAČUN',
 
   // Valuta
   DEFAULT_CURRENCY: 'EUR',
@@ -58,7 +59,102 @@ function onOpen() {
     .addSeparator()
     .addItem('⚙️ Postavi API ključ', 'setupFiraIntegration')
     .addItem('ℹ️ Prikaži postavke', 'showConfiguration')
+    .addItem('📋 Dodaj GENERIRAJ checkboxove', 'addGenerateCheckboxes')
     .addToUi();
+}
+
+/**
+ * Trigger when cell is edited - handles checkbox clicks
+ */
+function onEdit(e) {
+  var sheet = e.source.getActiveSheet();
+  var range = e.range;
+  var row = range.getRow();
+  var col = range.getColumn();
+
+  // Skip header row
+  if (row <= 1) return;
+
+  // Find AKCIJA_FIRA_RACUN column
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var actionCol = -1;
+  for (var i = 0; i < headers.length; i++) {
+    if (headers[i] === 'AKCIJA_FIRA_RACUN') {
+      actionCol = i + 1;
+      break;
+    }
+  }
+
+  // If not the action column or not checked, ignore
+  if (col !== actionCol || e.value !== 'TRUE') return;
+
+  // Get row data for confirmation
+  var rowData = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var data = {};
+  headers.forEach(function(header, index) {
+    data[header] = rowData[index];
+  });
+
+  var email = data['E-adresa'] || 'N/A';
+  var payment = data['Payment'] || CONFIG.DEFAULT_PRICE;
+  var name = data['Name and surname (Ime i prezime)'] || 'N/A';
+
+  // Show confirmation dialog
+  var ui = SpreadsheetApp.getUi();
+  var result = ui.alert(
+    'Potvrda generiranja računa',
+    'Jeste li sigurni da želite generirati račun?\n\n' +
+    '👤 Kupac: ' + name + '\n' +
+    '💰 Iznos: ' + payment + ' ' + CONFIG.DEFAULT_CURRENCY + '\n' +
+    '📧 Email: ' + email + '\n\n' +
+    'Račun će biti poslan kupcu na navedeni email.',
+    ui.ButtonSet.YES_NO
+  );
+
+  if (result === ui.Button.YES) {
+    // Process the invoice
+    createFiraInvoiceForRow(row);
+  } else {
+    // Uncheck the checkbox
+    range.setValue(false);
+  }
+}
+
+/**
+ * Add checkboxes to AKCIJA_FIRA_RACUN column for all data rows
+ */
+function addGenerateCheckboxes() {
+  var sheet = SpreadsheetApp.getActiveSheet();
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+
+  // Find or create AKCIJA_FIRA_RACUN column
+  var actionCol = -1;
+  for (var i = 0; i < headers.length; i++) {
+    if (headers[i] === 'AKCIJA_FIRA_RACUN') {
+      actionCol = i + 1;
+      break;
+    }
+  }
+
+  if (actionCol === -1) {
+    // Create the column
+    actionCol = sheet.getLastColumn() + 1;
+    sheet.getRange(1, actionCol).setValue('AKCIJA_FIRA_RACUN');
+  }
+
+  // Add checkboxes for all data rows
+  var lastRow = sheet.getLastRow();
+  if (lastRow > 1) {
+    var checkboxRange = sheet.getRange(2, actionCol, lastRow - 1, 1);
+    checkboxRange.insertCheckboxes();
+  }
+
+  SpreadsheetApp.getUi().alert(
+    'Gotovo!',
+    'Checkboxovi su dodani u stupac AKCIJA_FIRA_RACUN.\n\n' +
+    'Kliknite na checkbox da generirate račun za taj redak.',
+    SpreadsheetApp.getUi().ButtonSet.OK
+  );
 }
 
 /**
@@ -122,6 +218,16 @@ function createFiraInvoice() {
     return;
   }
 
+  createFiraInvoiceForRow(row);
+}
+
+/**
+ * Create invoice in FIRA for a specific row number
+ */
+function createFiraInvoiceForRow(row) {
+  var ui = SpreadsheetApp.getUi();
+  var sheet = SpreadsheetApp.getActiveSheet();
+
   // Get API key
   var apiKey = PropertiesService.getScriptProperties().getProperty('FIRA_API_KEY');
 
@@ -150,6 +256,8 @@ function createFiraInvoice() {
     if (!validation.valid) {
       ui.alert('Greška validacije', validation.error, ui.ButtonSet.OK);
       SpreadsheetApp.getActiveSpreadsheet().toast('Validacija nije uspjela', 'Greška', 3);
+      // Uncheck the checkbox
+      uncheckActionCheckbox(sheet, row, headers);
       return;
     }
 
@@ -180,6 +288,10 @@ function createFiraInvoice() {
     // Mark row as failed
     markRowAsProcessed(sheet, row, 'GREŠKA: ' + error.message, new Date(), null);
 
+    // Uncheck the checkbox
+    var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    uncheckActionCheckbox(sheet, row, headers);
+
     // Show error to user
     ui.alert(
       'Greška',
@@ -188,6 +300,18 @@ function createFiraInvoice() {
     );
 
     SpreadsheetApp.getActiveSpreadsheet().toast('Neuspješno kreiranje računa', 'Greška', 5);
+  }
+}
+
+/**
+ * Uncheck the action checkbox for a row
+ */
+function uncheckActionCheckbox(sheet, row, headers) {
+  for (var i = 0; i < headers.length; i++) {
+    if (headers[i] === 'AKCIJA_FIRA_RACUN') {
+      sheet.getRange(row, i + 1).setValue(false);
+      break;
+    }
   }
 }
 
