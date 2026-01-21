@@ -142,7 +142,7 @@ function authorizePermissions() {
 
   // Test UrlFetchApp permission
   try {
-    UrlFetchApp.fetch('https://app.fira.finance', {muteHttpExceptions: true, method: 'head'});
+    UrlFetchApp.fetch('https://app.fira.finance', {muteHttpExceptions: true});
     ui.alert('Autorizacija uspješna!', 'Sve dozvole su odobrene. Sada možete koristiti checkbox buttone.', ui.ButtonSet.OK);
   } catch (e) {
     ui.alert('Greška', 'Autorizacija nije uspjela: ' + e.message, ui.ButtonSet.OK);
