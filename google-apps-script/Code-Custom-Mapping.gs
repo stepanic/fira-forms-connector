@@ -514,7 +514,7 @@ function markRowAsProcessed(sheet, row, status, timestamp, documentUrl) {
 
   // Set document URL (as clickable hyperlink)
   if (documentUrl) {
-    sheet.getRange(row, urlCol).setFormula('=HYPERLINK("' + documentUrl + '", "Otvori u FIRA")');
+    sheet.getRange(row, urlCol).setFormula('=HYPERLINK("' + documentUrl + '"; "Otvori u FIRA")');
   } else {
     sheet.getRange(row, urlCol).setValue('');
   }
