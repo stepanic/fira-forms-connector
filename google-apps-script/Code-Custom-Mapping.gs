@@ -159,8 +159,11 @@ function createFiraInvoice() {
     // Send to FIRA
     var response = sendToFira(payload, apiKey);
 
+    // Build document URL
+    var documentUrl = 'https://app.fira.finance/user/offers/details/' + response.id;
+
     // Mark row as processed
-    markRowAsProcessed(sheet, row, 'SUCCESS', new Date());
+    markRowAsProcessed(sheet, row, 'SUCCESS', new Date(), documentUrl);
 
     // Show success message
     ui.alert(
@@ -175,7 +178,7 @@ function createFiraInvoice() {
     Logger.log('Greška pri kreiranju FIRA računa: ' + error.toString());
 
     // Mark row as failed
-    markRowAsProcessed(sheet, row, 'GREŠKA: ' + error.message, new Date());
+    markRowAsProcessed(sheet, row, 'GREŠKA: ' + error.message, new Date(), null);
 
     // Show error to user
     ui.alert(
@@ -461,16 +464,17 @@ function sendToFira(payload, apiKey) {
 // ============================================================================
 
 /**
- * Mark row as processed with status and timestamp
+ * Mark row as processed with status, timestamp, and document URL
  */
-function markRowAsProcessed(sheet, row, status, timestamp) {
+function markRowAsProcessed(sheet, row, status, timestamp, documentUrl) {
   var lastCol = sheet.getLastColumn();
   var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
 
   var statusCol = -1;
   var timestampCol = -1;
+  var urlCol = -1;
 
-  // Find existing status columns
+  // Find existing columns
   for (var i = 0; i < headers.length; i++) {
     if (headers[i] === 'FIRA Status') {
       statusCol = i + 1;
@@ -478,22 +482,42 @@ function markRowAsProcessed(sheet, row, status, timestamp) {
     if (headers[i] === 'FIRA Timestamp') {
       timestampCol = i + 1;
     }
+    if (headers[i] === 'FIRA Document URL') {
+      urlCol = i + 1;
+    }
   }
 
   // Create columns if they don't exist
+  var nextCol = lastCol + 1;
+
   if (statusCol === -1) {
-    statusCol = lastCol + 1;
+    statusCol = nextCol;
     sheet.getRange(1, statusCol).setValue('FIRA Status');
+    nextCol++;
   }
 
   if (timestampCol === -1) {
-    timestampCol = (statusCol === lastCol + 1) ? lastCol + 2 : lastCol + 1;
+    timestampCol = nextCol;
     sheet.getRange(1, timestampCol).setValue('FIRA Timestamp');
+    nextCol++;
+  }
+
+  if (urlCol === -1) {
+    urlCol = nextCol;
+    sheet.getRange(1, urlCol).setValue('FIRA Document URL');
+    nextCol++;
   }
 
   // Set values
   sheet.getRange(row, statusCol).setValue(status);
   sheet.getRange(row, timestampCol).setValue(timestamp);
+
+  // Set document URL (as clickable hyperlink)
+  if (documentUrl) {
+    sheet.getRange(row, urlCol).setFormula('=HYPERLINK("' + documentUrl + '", "Otvori u FIRA")');
+  } else {
+    sheet.getRange(row, urlCol).setValue('');
+  }
 
   // Color code: green for success, red for error
   if (status === 'SUCCESS') {
