@@ -1,0 +1,74 @@
+{
+  "webshopOrderId": 1332345,
+  "webshopType": "CUSTOM",
+  "webshopEvent": "order_created",
+  "webshopOrderNumber": "ORD-2025-001234",
+  "invoiceType": "PONUDA",
+  "paymentGatewayCode": "google-forms",
+  "paymentGatewayName": "Google Forms Submission",
+  "createdAt": "2025-11-11T22:56:00Z",
+  "dueDate": "2025-11-25",
+  "validTo": "2025-12-11",
+  "currency": "EUR",
+  "taxesIncluded": true,
+  "billingAddress": {
+    "name": "John Doe",
+    "address1": "Ilica 123",
+    "address2": "Apartment 5",
+    "city": "Zagreb",
+    "country": "HR",
+    "phone": "+385912345678",
+    "zipCode": "10000",
+    "email": "[email protected]",
+    "vatNumber": "HR12345678901",
+    "oib": "12345678901",
+    "company": "Doe Enterprises d.o.o."
+  },
+  "shippingAddress": {
+    "name": "John Doe",
+    "address1": "Savska 50",
+    "city": "Zagreb",
+    "country": "HR",
+    "phone": "+385912345678",
+    "zipCode": "10000",
+    "email": "[email protected]"
+  },
+  "taxValue": 25.00,
+  "brutto": 125.00,
+  "netto": 100.00,
+  "lineItems": [
+    {
+      "name": "Premium Widget",
+      "description": "High quality widget with extended warranty",
+      "lineItemId": "ITEM-001",
+      "price": 50.00,
+      "quantity": 2,
+      "unit": "kom",
+      "taxRate": 0.25,
+      "productCode": "WIDGET-PREM-001"
+    },
+    {
+      "name": "Standard Gadget",
+      "description": "Standard model gadget",
+      "lineItemId": "ITEM-002",
+      "price": 25.00,
+      "quantity": 1,
+      "unit": "kom",
+      "taxRate": 0.25,
+      "productCode": "GADGET-STD-001"
+    }
+  ],
+  "discounts": [],
+  "totalShipping": {
+    "name": "Standard Shipping",
+    "description": "Standard delivery",
+    "lineItemId": "SHIP-001",
+    "price": 0.00,
+    "quantity": 1,
+    "unit": "usluga",
+    "taxRate": 0.25
+  },
+  "internalNote": "Test invoice created from Google Forms integration",
+  "paymentType": "TRANSAKCIJSKI",
+  "termsHR": "Plaćanje u roku 14 dana."
+}

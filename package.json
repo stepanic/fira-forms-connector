@@ -1,0 +1,45 @@
+{
+  "name": "fira-forms-connector",
+  "version": "1.0.0",
+  "description": "Open-source integration between FIRA.finance and Google Forms/Sheets",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "test:webhook": "ts-node cli/test-webhook.ts",
+    "test:sample": "ts-node cli/test-webhook.ts --sample",
+    "test:real": "ts-node cli/test-real-submission.ts",
+    "lint": "eslint . --ext .ts",
+    "format": "prettier --write \"**/*.{ts,js,json,md}\""
+  },
+  "keywords": [
+    "fira",
+    "finance",
+    "google-forms",
+    "google-sheets",
+    "invoice",
+    "webhook",
+    "integration"
+  ],
+  "author": "Matija Stepanic",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/fira-forms-connector.git"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.5",
+    "@typescript-eslint/eslint-plugin": "^6.19.0",
+    "@typescript-eslint/parser": "^6.19.0",
+    "eslint": "^8.56.0",
+    "prettier": "^3.2.4",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "axios": "^1.6.5",
+    "chalk": "^4.1.2",
+    "commander": "^11.1.0",
+    "dotenv": "^16.4.1",
+    "joi": "^17.12.0"
+  }
+}

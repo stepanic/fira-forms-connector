@@ -1,0 +1,46 @@
+{
+  "description": "Example column mapping configuration for Google Sheets",
+  "columnMapping": {
+    "customerName": "Customer Name",
+    "email": "Email",
+    "company": "Company",
+    "address": "Address",
+    "city": "City",
+    "zipCode": "ZIP Code",
+    "country": "Country",
+    "phone": "Phone",
+    "oib": "OIB",
+    "vatNumber": "VAT Number",
+    "product": "Product/Service",
+    "description": "Description",
+    "quantity": "Quantity",
+    "price": "Price",
+    "unit": "Unit",
+    "taxRate": "Tax Rate"
+  },
+  "alternativeColumnNames": {
+    "customerName": ["Name", "Full Name", "Client Name"],
+    "email": ["Email Address", "E-mail", "Contact Email"],
+    "address": ["Street Address", "Address Line 1"],
+    "zipCode": ["Postal Code", "ZIP", "Post Code"],
+    "phone": ["Phone Number", "Contact Phone", "Mobile"],
+    "product": ["Product", "Service", "Item", "Product Name"],
+    "price": ["Unit Price", "Price per Unit", "Cost"],
+    "vatNumber": ["VAT ID", "VAT No", "Tax ID"]
+  },
+  "defaults": {
+    "invoiceType": "PONUDA",
+    "currency": "EUR",
+    "paymentType": "TRANSAKCIJSKI",
+    "taxRate": 0.25,
+    "country": "HR",
+    "unit": "kom",
+    "quantity": 1
+  },
+  "notes": [
+    "Tax rates should be in decimal format (0.25 for 25%, 0.13 for 13%)",
+    "Country codes should be 2-letter ISO codes (HR, DE, AT, etc.)",
+    "Invoice types: PONUDA (Offer), RAČUN (Invoice), FISKALNI_RAČUN (Fiscal Invoice)",
+    "Payment types: GOTOVINA (Cash), TRANSAKCIJSKI (Bank Transfer), KARTICA (Card)"
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "webshopOrderId": 123456,
+  "webshopType": "CUSTOM",
+  "webshopEvent": "google_forms_registration",
+  "webshopOrderNumber": "GF-1737465360000",
+  "invoiceType": "PONUDA",
+  "paymentGatewayCode": "google-forms",
+  "paymentGatewayName": "Google Forms",
+  "createdAt": "2025-01-21T10:30:00Z",
+  "dueDate": "2025-02-04",
+  "currency": "EUR",
+  "taxesIncluded": true,
+  "billingAddress": {
+    "name": "Marko Marković",
+    "email": "[email protected]",
+    "city": "Zagreb",
+    "country": "HR",
+    "phone": "+385912345678",
+    "address1": "",
+    "zipCode": "",
+    "company": "",
+    "oib": "",
+    "vatNumber": ""
+  },
+  "shippingAddress": {
+    "name": "Marko Marković",
+    "city": "Zagreb",
+    "country": "HR"
+  },
+  "taxValue": 25.00,
+  "brutto": 125.00,
+  "netto": 100.00,
+  "lineItems": [
+    {
+      "name": "Registracija za susret",
+      "description": "Registracija sudionika: Marko Marković",
+      "lineItemId": "REG-001",
+      "price": 100.00,
+      "quantity": 1,
+      "unit": "usluga",
+      "taxRate": 0.25
+    }
+  ],
+  "discounts": [],
+  "totalShipping": {
+    "name": "Shipping",
+    "price": 0.00,
+    "quantity": 1,
+    "unit": "usluga",
+    "taxRate": 0.25
+  },
+  "internalNote": "Registracija iz Google Forms\nSpol: M\nGodina rođenja: 1990\nZanimanje: Inženjer",
+  "paymentType": "TRANSAKCIJSKI",
+  "termsHR": ""
+}
