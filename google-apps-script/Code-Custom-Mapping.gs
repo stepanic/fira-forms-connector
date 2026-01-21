@@ -60,13 +60,25 @@ function onOpen() {
     .addItem('⚙️ Postavi API ključ', 'setupFiraIntegration')
     .addItem('ℹ️ Prikaži postavke', 'showConfiguration')
     .addItem('📋 Dodaj GENERIRAJ checkboxove', 'addGenerateCheckboxes')
+    .addSeparator()
+    .addItem('🔐 Autoriziraj dozvole (pokreni jednom)', 'authorizePermissions')
     .addToUi();
 }
 
 /**
- * Trigger when cell is edited - handles checkbox clicks
+ * Installable trigger for checkbox clicks
+ * VAŽNO: Ova funkcija mora biti postavljena kao INSTALLABLE trigger, ne simple trigger!
+ *
+ * Postavljanje:
+ * 1. U Apps Script editoru idi na Triggers (ikona sata)
+ * 2. Klikni + Add Trigger
+ * 3. Odaberi: onCheckboxEdit, From spreadsheet, On edit
+ * 4. Spremi i autoriziraj
  */
-function onEdit(e) {
+function onCheckboxEdit(e) {
+  // Check if e exists (installable triggers pass event object)
+  if (!e || !e.range) return;
+
   var sheet = e.source.getActiveSheet();
   var range = e.range;
   var row = range.getRow();
@@ -117,6 +129,23 @@ function onEdit(e) {
   } else {
     // Uncheck the checkbox
     range.setValue(false);
+  }
+}
+
+/**
+ * Authorize all required permissions
+ * Run this function once manually to grant all permissions!
+ */
+function authorizePermissions() {
+  // This function just needs to exist and be run once to trigger auth flow
+  var ui = SpreadsheetApp.getUi();
+
+  // Test UrlFetchApp permission
+  try {
+    UrlFetchApp.fetch('https://app.fira.finance', {muteHttpExceptions: true, method: 'head'});
+    ui.alert('Autorizacija uspješna!', 'Sve dozvole su odobrene. Sada možete koristiti checkbox buttone.', ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('Greška', 'Autorizacija nije uspjela: ' + e.message, ui.ButtonSet.OK);
   }
 }
 
