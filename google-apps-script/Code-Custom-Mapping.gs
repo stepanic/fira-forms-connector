@@ -656,7 +656,9 @@ function buildPayload(headers, rowData, invoiceTypeOverride) {
     discounts: [],
 
     // Locale za kupca
-    customerLocale: location.country === 'HR' ? 'HR' : location.country,
+    // customerLocale prati istu trihotomiju kao FIRA odabir terms jezika:
+    //   HR → 'HR', AT/DE → 'DE', sve ostalo → 'EN'
+    customerLocale: localeForCountry(location.country),
 
     // Interna bilješka (nevidljiva na PDF-u)
     internalNote: internalNote,
@@ -951,7 +953,29 @@ function parseCityAndCountry(input) {
       'brazil': 'BR', 'mont': 'ME', 'crna gora': 'ME',
       'macedon': 'MK', 'mkd': 'MK', 'north macedon': 'MK',
       'alban': 'AL', 'kosovo': 'XK', 'ukrain': 'UA',
-      'philip': 'PH', 'filipin': 'PH'
+      'philip': 'PH', 'filipin': 'PH',
+      // Baltičke i sjeverne EU
+      'lithuan': 'LT', 'litv': 'LT', 'lt': 'LT',
+      'latvi': 'LV', 'lv': 'LV',
+      'eston': 'EE', 'ee': 'EE',
+      'finland': 'FI', 'finsk': 'FI', 'fi': 'FI',
+      'sweden': 'SE', 'švedsk': 'SE', 'se': 'SE',
+      'norway': 'NO', 'norvešk': 'NO', 'no': 'NO',
+      'denmark': 'DK', 'dansk': 'DK', 'dk': 'DK',
+      'iceland': 'IS', 'island': 'IS', 'is': 'IS',
+      // Mediteran / EU
+      'malta': 'MT', 'mt': 'MT',
+      'cyprus': 'CY', 'cipar': 'CY', 'cy': 'CY',
+      'greece': 'GR', 'grč': 'GR', 'gr': 'GR',
+      'bulgar': 'BG', 'bugar': 'BG', 'bg': 'BG',
+      'luxemb': 'LU', 'luksemb': 'LU', 'lu': 'LU',
+      // Latinska Amerika (katoličke zemlje)
+      'mexico': 'MX', 'meksik': 'MX', 'mx': 'MX',
+      'argentin': 'AR', 'ar': 'AR',
+      'chile': 'CL', 'cl': 'CL',
+      'colombia': 'CO', 'kolumb': 'CO', 'co': 'CO',
+      // Ostalo
+      'new zealand': 'NZ', 'novi zeland': 'NZ', 'nz': 'NZ'
     };
     for (var key in map) {
       if (raw.indexOf(key) >= 0 || raw === key) {
@@ -962,6 +986,17 @@ function parseCityAndCountry(input) {
   }
 
   return { city: city, country: country };
+}
+
+/**
+ * Mapiraj ISO country code na FIRA-podržani locale.
+ * Prati istu logiku kao FIRA odabir terms jezika:
+ *   HR → 'HR' (termsHR), AT/DE → 'DE' (termsDE), sve ostalo → 'EN' (termsEN).
+ */
+function localeForCountry(countryCode) {
+  if (countryCode === 'HR') return 'HR';
+  if (countryCode === 'DE' || countryCode === 'AT') return 'DE';
+  return 'EN';
 }
 
 // ============================================================================
