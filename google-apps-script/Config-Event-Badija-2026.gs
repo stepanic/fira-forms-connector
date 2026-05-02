@@ -67,16 +67,18 @@ var CONFIG = {
   PAYMENT_GATEWAY_NAME: 'Račun je plaćen TRANSAKCIJSKI. The invoice is already successfully paid.',
 
   // ── Stupci u Google Sheets ─────────────────────────────────────────────
-  // Prilagodi nazive stupaca prema svom Google Forms sheetu
+  // Bilingual headeri (EN / HR) — međunarodni Google Form ima oba jezika.
+  // Provjeri da se EXACT match s headerima u tvom Sheetu (case + razmaci).
+  // Ako tvoj Form koristi drugačije nazive, prilagodi vrijednosti ovdje.
   COLUMNS: {
     EMAIL: 'E-adresa',
-    PAYMENT: 'Uplata',
-    NAME: 'Ime i prezime',
-    GENDER: 'Spol',
-    CITY_COUNTRY: 'Grad ili mjesto stanovanja',
-    PHONE: 'Broj telefona (mobitela)',
-    YEAR_OF_BIRTH: 'Godina rođenja',
-    OCCUPATION: 'Zanimanje / struka / posao',
+    PAYMENT: 'Payment',
+    NAME: 'Name and surname (Ime i prezime)',
+    GENDER: 'Gender (Spol)',
+    CITY_COUNTRY: 'City and Country (Mjesto i država)',
+    PHONE: 'Phone number (Kontakt broj)',
+    YEAR_OF_BIRTH: 'Year of birth (Godina rođenja)',
+    OCCUPATION: 'Occupation / profession / job (Zanimanje/profesija/posao)',
     OIB: 'OIB',
     PAYMENT_TYPE: 'Payment Type',
     INVOICE_TYPE: 'Tip dokumenta',
