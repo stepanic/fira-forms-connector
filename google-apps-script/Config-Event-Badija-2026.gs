@@ -67,25 +67,27 @@ var CONFIG = {
   PAYMENT_GATEWAY_NAME: 'Račun je plaćen TRANSAKCIJSKI. The invoice is already successfully paid.',
 
   // ── Stupci u Google Sheets ─────────────────────────────────────────────
-  // Bilingual headeri (EN / HR) — međunarodni Google Form ima oba jezika.
-  // Provjeri da se EXACT match s headerima u tvom Sheetu (case + razmaci).
-  // Ako tvoj Form koristi drugačije nazive, prilagodi vrijednosti ovdje.
+  // Bilingual headeri (EN / HR) — usklađeno sa stvarnim headerima Badija forme.
+  // VAŽNO: findColumnIndex koristi EXACT string match — pazi na razmake!
+  //   - 'Gender  (Spol)' ima DVA razmaka prije zagrade (artefakt iz Forme)
+  //   - 'Occupation ... ( Zanimanje ...' ima leading space unutar zagrade
+  // Ako naknadno preimenuješ pitanje u Formi, ovdje također promijeni.
   COLUMNS: {
     EMAIL: 'E-adresa',
-    PAYMENT: 'Payment',
+    PAYMENT: 'Payment (uplata ostatak)',
     NAME: 'Name and surname (Ime i prezime)',
-    GENDER: 'Gender (Spol)',
-    CITY_COUNTRY: 'City and Country (Mjesto i država)',
+    GENDER: 'Gender  (Spol)',
+    CITY_COUNTRY: 'City and Country (Grad i država)',
     PHONE: 'Phone number (Kontakt broj)',
     YEAR_OF_BIRTH: 'Year of birth (Godina rođenja)',
-    OCCUPATION: 'Occupation / profession / job (Zanimanje/profesija/posao)',
+    OCCUPATION: 'Occupation / profession / job ( Zanimanje / struka / posao)',
     OIB: 'OIB',
     PAYMENT_TYPE: 'Payment Type',
     INVOICE_TYPE: 'Tip dokumenta',
     ACTION: 'AKCIJA_FIRA_RACUN',
     // ── Split payment (Code-Custom-SplitPayment.gs) ──────────────────────
     // Za Badija event: avans + ostatak → 2 računa po retku
-    // PAYMENT (gore) tada znači OSTATAK, a ne ukupan iznos
+    // PAYMENT (gore) u split modu znači OSTATAK, a ne ukupan iznos
     ADVANCE_PAYMENT: 'Advance payment (predujam)',
     AKCIJA_AVANS: 'AKCIJA_AVANS_RACUN',
     AKCIJA_FINAL: 'AKCIJA_FINALNI_RACUN'
