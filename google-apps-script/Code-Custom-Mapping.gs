@@ -136,7 +136,8 @@ function onCheckboxEdit(e) {
     sheet.getRange(row, invoiceTypeCol).setValue(chosenType);
   }
 
-  createFiraInvoiceForRow(row);
+  // Proslijedi izbor izravno — ne oslanjamo se samo na stupac jer ga možda nema
+  createFiraInvoiceForRow(row, false, chosenType);
 }
 
 // ============================================================================
@@ -391,8 +392,9 @@ function createFiraInvoicesBulk() {
  * Core: kreiraj FIRA račun za jedan redak.
  * @param {number} row - Broj retka (1-indexed)
  * @param {boolean} [suppressDialogs=false] - Bez UI dijaloga (za bulk)
+ * @param {string} [invoiceTypeOverride] - 'RAČUN' | 'FISKALNI_RAČUN' (override stupca i CONFIG default)
  */
-function createFiraInvoiceForRow(row, suppressDialogs) {
+function createFiraInvoiceForRow(row, suppressDialogs, invoiceTypeOverride) {
   var ui = SpreadsheetApp.getUi();
   var sheet = SpreadsheetApp.getActiveSheet();
 
@@ -408,7 +410,7 @@ function createFiraInvoiceForRow(row, suppressDialogs) {
     SpreadsheetApp.getActiveSpreadsheet().toast('Fiskaliziram...', 'FIRA', -1);
 
     var rowData = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
-    var payload = buildPayload(headers, rowData);
+    var payload = buildPayload(headers, rowData, invoiceTypeOverride);
 
     var validation = validatePayload(payload);
     if (!validation.valid) {
@@ -544,7 +546,7 @@ function validatePaymentAmount(rawValue) {
  * ✅ termsEN              — za strane sudionike (NOVO!)
  * ✅ termsDE              — za DE/AT sudionike (NOVO!)
  */
-function buildPayload(headers, rowData) {
+function buildPayload(headers, rowData, invoiceTypeOverride) {
   var data = mapHeadersToValues(headers, rowData);
 
   var email = getVal(data, CONFIG.COLUMNS.EMAIL);
@@ -556,7 +558,8 @@ function buildPayload(headers, rowData) {
   var occupation = getVal(data, CONFIG.COLUMNS.OCCUPATION);
   var oib = getVal(data, CONFIG.COLUMNS.OIB);
   var paymentType = getVal(data, CONFIG.COLUMNS.PAYMENT_TYPE) || CONFIG.DEFAULT_PAYMENT_TYPE;
-  var invoiceType = getVal(data, CONFIG.COLUMNS.INVOICE_TYPE) || CONFIG.DEFAULT_INVOICE_TYPE;
+  // Prioritet: eksplicitan override (iz prompt-a) → stupac Tip dokumenta → CONFIG default
+  var invoiceType = invoiceTypeOverride || getVal(data, CONFIG.COLUMNS.INVOICE_TYPE) || CONFIG.DEFAULT_INVOICE_TYPE;
 
   // UPLATA — obavezna, validira se prije poziva buildPayload,
   // ali radimo dodatnu provjeru za sigurnost
