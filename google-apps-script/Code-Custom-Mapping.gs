@@ -108,22 +108,35 @@ function onCheckboxEdit(e) {
 
   var ui = SpreadsheetApp.getUi();
   var result = ui.alert(
-    'Potvrda generiranja FISKALNOG računa',
-    '⚠️ FISKALNI RAČUN — šalje se Poreznoj upravi!\n\n' +
+    'Odaberi tip dokumenta',
     '👤 ' + name + '\n' +
     '🆔 OIB: ' + (oib || '(nije unesen)') + '\n' +
     '💰 ' + payment + ' ' + CONFIG.DEFAULT_CURRENCY + '\n' +
     '💳 ' + paymentType + '\n' +
     '📧 ' + email + '\n\n' +
-    'Jednom fiskaliziran, račun se NE MOŽE izbrisati!\nNastaviti?',
-    ui.ButtonSet.YES_NO
+    '── Odaberi tip ──\n' +
+    '✅ DA   → FISKALNI_RAČUN (šalje se Poreznoj upravi, NE briše se)\n' +
+    '🧪 NE   → RAČUN (običan, može se brisati u FIRA UI — za test/dev)\n' +
+    '✖️ ODUSTANI → otkaži',
+    ui.ButtonSet.YES_NO_CANCEL
   );
 
-  if (result === ui.Button.YES) {
-    createFiraInvoiceForRow(row);
-  } else {
+  var chosenType = null;
+  if (result === ui.Button.YES) chosenType = 'FISKALNI_RAČUN';
+  else if (result === ui.Button.NO) chosenType = 'RAČUN';
+
+  if (!chosenType) {
     e.range.setValue(false);
+    return;
   }
+
+  // Zapiši izbor u stupac Tip dokumenta (ako postoji) — audit trail + bulk consistency
+  var invoiceTypeCol = findColumnIndex(headers, CONFIG.COLUMNS.INVOICE_TYPE);
+  if (invoiceTypeCol !== -1) {
+    sheet.getRange(row, invoiceTypeCol).setValue(chosenType);
+  }
+
+  createFiraInvoiceForRow(row);
 }
 
 // ============================================================================
@@ -164,7 +177,7 @@ function showConfiguration() {
     'Usluga: ' + CONFIG.SERVICE_NAME + '\n' +
     'Cijena: iz stupca UPLATA (obavezno)\n' +
     'Mjesto: ' + CONFIG.DELIVERY_PLACE + '\n' +
-    'Tip: ' + CONFIG.DEFAULT_INVOICE_TYPE + '\n' +
+    'Tip (default): ' + CONFIG.DEFAULT_INVOICE_TYPE + '  (override: stupac "' + CONFIG.COLUMNS.INVOICE_TYPE + '")\n' +
     'Plaćanje: ' + CONFIG.DEFAULT_PAYMENT_TYPE + '\n' +
     'PDV: ' + (CONFIG.VAT_ENABLED ? 'Da' : 'Ne') + '\n' +
     'Datum konf.: ' + CONFIG.CONFERENCE_DATE + '\n' +
@@ -209,6 +222,23 @@ function addFiscalColumns() {
       );
     }
     addedColumns.push('Payment Type');
+  }
+
+  // Tip dokumenta stupac s dropdown validacijom (RAČUN | FISKALNI_RAČUN)
+  headers = getHeaders(sheet);
+  if (findColumnIndex(headers, CONFIG.COLUMNS.INVOICE_TYPE) === -1) {
+    var itCol = sheet.getLastColumn() + 1;
+    sheet.getRange(1, itCol).setValue(CONFIG.COLUMNS.INVOICE_TYPE);
+    if (lastRow > 1) {
+      var itRange = sheet.getRange(2, itCol, lastRow - 1, 1);
+      itRange.setDataValidation(
+        SpreadsheetApp.newDataValidation()
+          .requireValueInList(['RAČUN', 'FISKALNI_RAČUN'])
+          .setAllowInvalid(false)
+          .build()
+      );
+    }
+    addedColumns.push('Tip dokumenta');
   }
 
   // AKCIJA checkboxovi
@@ -311,13 +341,23 @@ function createFiraInvoicesBulk() {
     return;
   }
 
+  // Prebroji tipove dokumenta iz stupca (fallback na CONFIG default)
+  var invoiceTypeCol = findColumnIndex(headers, CONFIG.COLUMNS.INVOICE_TYPE);
+  var fiscalCount = 0, regularCount = 0;
+  for (var k = 0; k < rowsToProcess.length; k++) {
+    var t = invoiceTypeCol !== -1
+      ? (sheet.getRange(rowsToProcess[k], invoiceTypeCol).getValue() || CONFIG.DEFAULT_INVOICE_TYPE)
+      : CONFIG.DEFAULT_INVOICE_TYPE;
+    if (t === 'FISKALNI_RAČUN') fiscalCount++; else regularCount++;
+  }
+
   var confirm = ui.alert(
-    'Bulk fiskalizacija — ' + rowsToProcess.length + ' računa',
-    '⚠️ Kreirat će se ' + rowsToProcess.length + ' FISKALNIH računa!\n\n' +
-    'Šalju se Poreznoj upravi i NE MOGU se izbrisati.\n' +
-    'Provjerite podatke prije nastavka.\n\n' +
-    '💡 Nakon kreiranja, označite ih u FIRA UI kao "Plaćen"\n' +
-    'da se sakrije barkod za plaćanje.',
+    'Bulk obrada — ' + rowsToProcess.length + ' računa',
+    'Kreirat će se ' + rowsToProcess.length + ' dokumenata:\n' +
+    '  🧾 FISKALNI_RAČUN: ' + fiscalCount + '  (NE briše se, šalje se Poreznoj)\n' +
+    '  📄 RAČUN: ' + regularCount + '  (običan, može se brisati u FIRA UI)\n\n' +
+    'Tip se kontrolira stupcem "' + CONFIG.COLUMNS.INVOICE_TYPE + '" — provjeri prije nastavka.\n\n' +
+    '💡 Nakon kreiranja, fiskalne označite u FIRA UI kao "Plaćen" da se sakrije barkod.',
     ui.ButtonSet.YES_NO
   );
   if (confirm !== ui.Button.YES) return;
@@ -385,15 +425,19 @@ function createFiraInvoiceForRow(row, suppressDialogs) {
 
     markRowAsProcessed(sheet, row, 'SUCCESS', new Date(), documentUrl);
 
+    var isFiscal = payload.invoiceType === 'FISKALNI_RAČUN';
+    var successTitle = isFiscal ? '✅ Fiskalni račun kreiran!' : '✅ Račun kreiran!';
+    var successBody = isFiscal
+      ? 'FIRA će fiskalizirati prema Poreznoj upravi (JIR + ZKI).\n\n' +
+        '💡 Za skrivanje barkoda:\nU FIRA UI označite račun kao "Plaćen".'
+      : 'Običan RAČUN — može se obrisati u FIRA dashboardu.\n\n' +
+        '💡 Za produkciju odaberi FISKALNI_RAČUN u promptu.';
+
     if (!suppressDialogs) {
-      ui.alert('✅ Fiskalni račun kreiran!',
-        'FIRA će fiskalizirati prema Poreznoj upravi (JIR + ZKI).\n\n' +
-        '💡 Za skrivanje barkoda:\n' +
-        'U FIRA UI označite račun kao "Plaćen".',
-        ui.ButtonSet.OK);
+      ui.alert(successTitle, successBody, ui.ButtonSet.OK);
     }
 
-    SpreadsheetApp.getActiveSpreadsheet().toast('✅ Fiskalni račun kreiran!', 'FIRA', 5);
+    SpreadsheetApp.getActiveSpreadsheet().toast(successTitle, 'FIRA', 5);
 
   } catch (error) {
     Logger.log('═══════════════════════════════════════════');
@@ -512,6 +556,7 @@ function buildPayload(headers, rowData) {
   var occupation = getVal(data, CONFIG.COLUMNS.OCCUPATION);
   var oib = getVal(data, CONFIG.COLUMNS.OIB);
   var paymentType = getVal(data, CONFIG.COLUMNS.PAYMENT_TYPE) || CONFIG.DEFAULT_PAYMENT_TYPE;
+  var invoiceType = getVal(data, CONFIG.COLUMNS.INVOICE_TYPE) || CONFIG.DEFAULT_INVOICE_TYPE;
 
   // UPLATA — obavezna, validira se prije poziva buildPayload,
   // ali radimo dodatnu provjeru za sigurnost
@@ -557,8 +602,8 @@ function buildPayload(headers, rowData) {
     webshopOrderId: orderId,
     webshopType: 'CUSTOM',
 
-    // Tip dokumenta
-    invoiceType: CONFIG.DEFAULT_INVOICE_TYPE,
+    // Tip dokumenta — per-row override iz stupca Tip dokumenta, fallback na CONFIG default
+    invoiceType: invoiceType,
 
     // Payment gateway
     paymentGatewayCode: CONFIG.PAYMENT_GATEWAY_CODE,

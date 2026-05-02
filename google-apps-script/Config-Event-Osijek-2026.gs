@@ -13,7 +13,7 @@ var CONFIG = {
   // ── Event-specific ──────────────────────────────────────────────────────
   SERVICE_NAME: 'Kotizacija za Regionalni susret Osijek — Prilika Za Susret',
   DELIVERY_PLACE: 'Osijek',
-  CONFERENCE_DATE: '2026-03-14',   // ISO format YYYY-MM-DD
+  CONFERENCE_DATE: '2026-05-23',   // ISO format YYYY-MM-DD (subota)
 
   // ── Tip dokumenta ──────────────────────────────────────────────────────
   // 'PONUDA' | 'RAČUN' | 'FISKALNI_RAČUN'
@@ -62,6 +62,11 @@ var CONFIG = {
     OCCUPATION: 'Zanimanje / struka / posao',
     OIB: 'OIB',
     PAYMENT_TYPE: 'Payment Type',
+    INVOICE_TYPE: 'Tip dokumenta',
     ACTION: 'AKCIJA_FIRA_RACUN'
   }
 };
+
+// ============================================================================
+// KRAJ KONFIGURACIJE — ispod ide Code-Custom-Mapping.gs (ako ljepite u 1 file)
+// ============================================================================
