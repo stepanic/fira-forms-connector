@@ -60,6 +60,14 @@ function onOpen() {
     .addSeparator()
     .addItem('🔐 Autoriziraj dozvole (jednom)', 'authorizePermissions')
     .addToUi();
+
+  // Optional: install split-payment menu ako je modul učitan u projektu
+  // (Code-Custom-SplitPayment.gs definira addSplitPaymentMenu)
+  try {
+    if (typeof addSplitPaymentMenu === 'function') addSplitPaymentMenu();
+  } catch (e) {
+    Logger.log('Split payment menu not loaded: ' + e.message);
+  }
 }
 
 // ============================================================================
@@ -75,6 +83,16 @@ function onCheckboxEdit(e) {
   var col = e.range.getColumn();
 
   if (row <= 1) return;
+
+  // Dispatch to split-payment module ako je učitan i edit pripada AVANS/FINAL stupcu
+  try {
+    if (typeof dispatchSplitPaymentCheckbox === 'function'
+        && dispatchSplitPaymentCheckbox(e)) {
+      return;
+    }
+  } catch (err) {
+    Logger.log('Split payment dispatch error: ' + err.message);
+  }
 
   var headers = getHeaders(sheet);
   var actionCol = findColumnIndex(headers, CONFIG.COLUMNS.ACTION);

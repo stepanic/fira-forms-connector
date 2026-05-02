@@ -82,7 +82,13 @@ var CONFIG = {
     OIB: 'OIB',
     PAYMENT_TYPE: 'Payment Type',
     INVOICE_TYPE: 'Tip dokumenta',
-    ACTION: 'AKCIJA_FIRA_RACUN'
+    ACTION: 'AKCIJA_FIRA_RACUN',
+    // ── Split payment (Code-Custom-SplitPayment.gs) ──────────────────────
+    // Za Badija event: avans + ostatak → 2 računa po retku
+    // PAYMENT (gore) tada znači OSTATAK, a ne ukupan iznos
+    ADVANCE_PAYMENT: 'Advance payment (predujam)',
+    AKCIJA_AVANS: 'AKCIJA_AVANS_RACUN',
+    AKCIJA_FINAL: 'AKCIJA_FINALNI_RACUN'
   }
 };
 
