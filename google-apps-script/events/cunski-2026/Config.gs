@@ -11,10 +11,12 @@
  * Rok prijave: do 1.7.2026.
  * Broj mjesta: max. 35 sudionika
  *
- * DOMAĆI EVENT — samo HR jezik
+ * DOMAĆI EVENT (HR forma) — ali multilingual jer sudionici dolaze i iz
+ * inozemstva. FIRA bira jezik PDF-a po billingAddress.country
+ * (parsira se iz stupca "Grad ili mjesto stanovanja").
  *
  * Cijene (per row — iznos ide u stupac UPLATA):
- *   Akcija (do 15.5.):          350 € (jednokratno)
+ *   Akcija (do 15.5.):          350 € (jednokratno na račun)
  *   Early Bird (do 1.6.):       420 € (6 dana × 70 €)
  *   Regular (do 1.7.):          450 € (6 dana × 75 €)
  *   Last Minute (nakon 1.7.):   480 € (6 dana × 80 €)
@@ -40,7 +42,7 @@ var CONFIG = {
   // ── Valuta i plaćanje ──────────────────────────────────────────────────
   DEFAULT_CURRENCY: 'EUR',
   // 'GOTOVINA' | 'TRANSAKCIJSKI' | 'KARTICA'
-  // Napomena: dio uplate moguć i u gotovini po dolasku — za te slučajeve
+  // Napomena: ostatak je moguć u gotovini po dolasku — za te slučajeve
   // override stupac "Payment Type" u Sheetu na GOTOVINA
   DEFAULT_PAYMENT_TYPE: 'TRANSAKCIJSKI',
 
@@ -53,10 +55,12 @@ var CONFIG = {
   DEFAULT_KPD_CODE: '',
 
   // ── Klauzule / Terms — vidljive na PDF-u računa ────────────────────────
-  // Domaći event — HR terms je primarni, EN i DE kao fallback za eventualne strance
-  TERMS_HR: 'Oslobođeno od plaćanja PDV-a sukladno čl. 90. st. 1. Zakona o porezu na dodanu vrijednost.\nRačun je plaćen — kotizacija za sudjelovanje na ljetnom duhovnom kampu Ćunski.',
-  TERMS_EN: 'VAT exempt pursuant to Art. 90, Par. 1 of the Croatian VAT Act.\nThis invoice has been paid — registration fee for the Summer Spiritual Camp Ćunski.',
-  TERMS_DE: 'MwSt.-befreit gemäß Art. 90 Abs. 1 des kroatischen MwSt.-Gesetzes.\nDiese Rechnung ist bezahlt — Teilnahmegebühr für das geistliche Sommercamp Ćunski.',
+  // FIRA bira jezik prema billingAddress.country (parsira se iz stupca
+  // "Grad ili mjesto stanovanja"):
+  //   HR → termsHR | DE/AT → termsDE | ostalo → termsEN
+  TERMS_HR: 'Oslobođeno od plaćanja PDV-a sukladno čl. 90. st. 1. Zakona o porezu na dodanu vrijednost.\nRačun je plaćen — kotizacija za sudjelovanje na ljetnom duhovnom kampu Ćunski (Mali Lošinj).',
+  TERMS_EN: 'VAT exempt pursuant to Art. 90, Par. 1 of the Croatian VAT Act.\nThis invoice has been paid — registration fee for the Summer Spiritual Camp Ćunski (Mali Lošinj).',
+  TERMS_DE: 'MwSt.-befreit gemäß Art. 90 Abs. 1 des kroatischen MwSt.-Gesetzes.\nDiese Rechnung ist bezahlt — Teilnahmegebühr für das geistliche Sommercamp Ćunski (Mali Lošinj).',
 
   // ── Internal note (max 250 chars, NE vidi se na PDF-u) ─────────────────
   MAX_INTERNAL_NOTE_LENGTH: 250,
@@ -69,21 +73,25 @@ var CONFIG = {
   PAYMENT_GATEWAY_NAME: 'Račun je plaćen TRANSAKCIJSKI.',
 
   // ── Stupci u Google Sheets ─────────────────────────────────────────────
-  // HR-only headeri — usklađeno s Google Form pitanjima za Ćunski.
+  // EXACT headeri iz Google Forms response sheeta za Ćunski 2026.
   // VAŽNO: findColumnIndex koristi EXACT string match — pazi na razmake!
-  // Ako naknadno preimenuješ pitanje u Formi, ovdje također promijeni.
   //
-  // NAPOMENA: Ovi nazivi stupaca su placeholder — prilagodi ih TOČNIM
-  // headerima iz Google Forms response sheeta kad forma bude kreirana.
+  // Headeri s trailing spaceom (artefakt iz Google Forms):
+  //   - 'Grad ili mjesto stanovanja ' — trailing space
+  //   - 'Godina rođenja ' — trailing space
+  //
+  // Stupac "Grad ili mjesto stanovanja" se koristi za parseCityAndCountry()
+  // koja podržava formate: "Zagreb", "Wien, Austria", "München, Deutschland"
+  // → automatski detektira country za multilingual PDF (HR/EN/DE).
   COLUMNS: {
     EMAIL: 'E-adresa',
-    PAYMENT: 'Uplata (ostatak)',
+    PAYMENT: 'Uplata - ostatak',
     NAME: 'Ime i prezime',
     GENDER: 'Spol',
-    CITY_COUNTRY: 'Grad i država',
-    PHONE: 'Kontakt broj',
-    YEAR_OF_BIRTH: 'Godina rođenja',
-    OCCUPATION: 'Zanimanje',
+    CITY_COUNTRY: 'Grad ili mjesto stanovanja ',    // ⚠️ trailing space!
+    PHONE: 'Broj telefona (mobitela)',
+    YEAR_OF_BIRTH: 'Godina rođenja ',               // ⚠️ trailing space!
+    OCCUPATION: 'Zanimanje / struka / posao',
     OIB: 'OIB',
     PAYMENT_TYPE: 'Payment Type',
     INVOICE_TYPE: 'Tip dokumenta',
@@ -91,7 +99,7 @@ var CONFIG = {
     // ── Split payment (modules/SplitPayment.gs) ──────────────────────────
     // Akontacija 100 € + ostatak → 2 računa po retku
     // PAYMENT (gore) u split modu znači OSTATAK, a ne ukupan iznos
-    ADVANCE_PAYMENT: 'Predujam (akontacija)',
+    ADVANCE_PAYMENT: 'Predujam',
     AKCIJA_AVANS: 'AKCIJA_AVANS_RACUN',
     AKCIJA_FINAL: 'AKCIJA_FINALNI_RACUN'
   }
