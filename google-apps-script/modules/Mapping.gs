@@ -50,13 +50,24 @@
 
 function onOpen() {
   var ui = SpreadsheetApp.getUi();
-  ui.createMenu('FIRA Actions')
-    .addItem('🧾 Napravi fiskalni račun (odabrani redak)', 'createFiraInvoice')
-    .addItem('📦 Bulk: fiskaliziraj sve označene', 'createFiraInvoicesBulk')
-    .addSeparator()
+  var isSplitEvent = !!(CONFIG && CONFIG.COLUMNS && CONFIG.COLUMNS.AKCIJA_AVANS);
+  var menu = ui.createMenu('FIRA Actions');
+
+  // Single-pay akcije — sakrij na split eventima da spriječiš krivi flow.
+  // Na split eventu sve ide kroz "FIRA Split Payment" menu (avans + finalni,
+  // a single-pay slučaj je AKCIJA_FINALNI_RACUN s avansom = 0).
+  if (!isSplitEvent) {
+    menu
+      .addItem('🧾 Napravi fiskalni račun (odabrani redak)', 'createFiraInvoice')
+      .addItem('📦 Bulk: fiskaliziraj sve označene', 'createFiraInvoicesBulk')
+      .addSeparator();
+  }
+
+  menu
     .addItem('⚙️ Postavi API ključ', 'setupFiraIntegration')
     .addItem('ℹ️ Prikaži postavke', 'showConfiguration')
     .addItem('📋 Dodaj stupce za fiskalizaciju', 'addFiscalColumns')
+    .addItem('🔧 Instaliraj onEdit trigger', 'installTriggers')
     .addSeparator()
     .addItem('🔐 Autoriziraj dozvole (jednom)', 'authorizePermissions')
     .addToUi();
@@ -72,8 +83,34 @@ function onOpen() {
 
 // ============================================================================
 // INSTALLABLE TRIGGER — checkbox click
-// Postavi: Triggers → + Add Trigger → onCheckboxEdit, On edit
+// Pokreni "🔧 Instaliraj onEdit trigger" iz menija jednom (ili installTriggers
+// iz GAS editora). Apps Script API ne dopušta kreiranje triggera preko clasp-a.
 // ============================================================================
+
+function installTriggers() {
+  var ui = SpreadsheetApp.getUi();
+  var ss = SpreadsheetApp.getActive();
+  if (!ss) {
+    ui.alert('Otvori bound Sheet pa pokreni iz menija — installTriggers treba aktivni Spreadsheet.');
+    return;
+  }
+
+  var existing = ScriptApp.getProjectTriggers().filter(function(t) {
+    return t.getHandlerFunction() === 'onCheckboxEdit';
+  });
+  existing.forEach(function(t) { ScriptApp.deleteTrigger(t); });
+
+  ScriptApp.newTrigger('onCheckboxEdit')
+    .forSpreadsheet(ss)
+    .onEdit()
+    .create();
+
+  ui.alert('✅ Trigger instaliran',
+    'onCheckboxEdit aktivan na ovom Sheetu' +
+    (existing.length > 0 ? ' (' + existing.length + ' postojeći(h) zamijenjen(o))' : '') +
+    '.\n\nKlikni checkbox AKCIJA_FIRA_RACUN ili AKCIJA_AVANS_RACUN za test.',
+    ui.ButtonSet.OK);
+}
 
 function onCheckboxEdit(e) {
   if (!e || !e.range) return;
@@ -98,6 +135,26 @@ function onCheckboxEdit(e) {
   var actionCol = findColumnIndex(headers, CONFIG.COLUMNS.ACTION);
 
   if (col !== actionCol || e.value !== 'TRUE') return;
+
+  // Guard: AKCIJA_FIRA_RACUN je ZABRANJEN na split-payment eventima.
+  // Sudionik bi dobio i avans + finalni račun (split flow) i jednokratni
+  // račun (ovaj flow) — knjigovodstveno duplo fakturirano.
+  if (CONFIG.COLUMNS.AKCIJA_AVANS) {
+    SpreadsheetApp.getUi().alert(
+      '⛔ Pogrešan checkbox za ovaj event',
+      'Ovaj event koristi split-payment flow (avans + finalni račun).\n\n' +
+      'KORISTI:\n' +
+      '  ✅ AKCIJA_AVANS_RACUN — kad sudionik plati avans\n' +
+      '  ✅ AKCIJA_FINALNI_RACUN — kad sudionik plati ostatak\n\n' +
+      'NE KORISTI:\n' +
+      '  ❌ AKCIJA_FIRA_RACUN — duplicirao bi račun (knjigovodstveni problem!)\n\n' +
+      'Stupac AKCIJA_FIRA_RACUN možeš ukloniti ručno (desni klik → Delete column)\n' +
+      'ili kroz FIRA Split Payment → "Ukloni AKCIJA_FIRA_RACUN stupac".',
+      SpreadsheetApp.getUi().ButtonSet.OK
+    );
+    e.range.setValue(false);
+    return;
+  }
 
   var data = getRowDataAsMap(sheet, row, headers);
   var name = data[CONFIG.COLUMNS.NAME] || 'N/A';
@@ -260,16 +317,21 @@ function addFiscalColumns() {
     addedColumns.push('Tip dokumenta');
   }
 
-  // AKCIJA checkboxovi
-  headers = getHeaders(sheet);
-  var actionColIdx = findColumnIndex(headers, CONFIG.COLUMNS.ACTION);
-  if (actionColIdx === -1) {
-    actionColIdx = sheet.getLastColumn() + 1;
-    sheet.getRange(1, actionColIdx).setValue(CONFIG.COLUMNS.ACTION);
-    addedColumns.push('AKCIJA_FIRA_RACUN');
-  }
-  if (lastRow > 1) {
-    sheet.getRange(2, actionColIdx, lastRow - 1, 1).insertCheckboxes();
+  // AKCIJA_FIRA_RACUN checkbox — preskoči na split-payment eventima da
+  // se izbjegne knjigovodstveni dupli račun (avans+finalni VS jednokratni).
+  if (CONFIG.COLUMNS.AKCIJA_AVANS) {
+    addedColumns.push('(skipped AKCIJA_FIRA_RACUN — split-payment event)');
+  } else {
+    headers = getHeaders(sheet);
+    var actionColIdx = findColumnIndex(headers, CONFIG.COLUMNS.ACTION);
+    if (actionColIdx === -1) {
+      actionColIdx = sheet.getLastColumn() + 1;
+      sheet.getRange(1, actionColIdx).setValue(CONFIG.COLUMNS.ACTION);
+      addedColumns.push('AKCIJA_FIRA_RACUN');
+    }
+    if (lastRow > 1) {
+      sheet.getRange(2, actionColIdx, lastRow - 1, 1).insertCheckboxes();
+    }
   }
 
   SpreadsheetApp.getUi().alert('Gotovo!',
