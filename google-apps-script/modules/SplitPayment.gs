@@ -49,7 +49,36 @@ function addSplitPaymentMenu() {
     .addItem('📦 Bulk: FINALNI računi (sve označene)', 'createFinalInvoicesBulk')
     .addSeparator()
     .addItem('📋 Dodaj stupce za split payment', 'addSplitPaymentColumns')
+    .addItem('🗑️ Ukloni AKCIJA_FIRA_RACUN stupac', 'removeStandardActionColumn')
     .addToUi();
+}
+
+/**
+ * Ukloni AKCIJA_FIRA_RACUN stupac na split-payment eventu.
+ * Taj stupac se kreira ako je korisnik prije pokrenuo "Dodaj stupce za fiskalizaciju";
+ * na split flow-u je opasan jer može stvoriti dupli račun.
+ */
+function removeStandardActionColumn() {
+  var ui = SpreadsheetApp.getUi();
+  var sheet = SpreadsheetApp.getActiveSheet();
+  var headers = getHeaders(sheet);
+  var colName = (CONFIG.COLUMNS && CONFIG.COLUMNS.ACTION) || 'AKCIJA_FIRA_RACUN';
+  var col = findColumnIndex(headers, colName);
+
+  if (col === -1) {
+    ui.alert('Stupac "' + colName + '" ne postoji — ništa za ukloniti.');
+    return;
+  }
+
+  var confirm = ui.alert(
+    'Ukloniti stupac "' + colName + '"?',
+    'Na ovom split-payment eventu ne smije se koristiti.\n' +
+    'Brisanje je sigurno — sve oznake se gube, ali nisu se ni smjele koristiti.\n\nNastaviti?',
+    ui.ButtonSet.YES_NO);
+  if (confirm !== ui.Button.YES) return;
+
+  sheet.deleteColumn(col);
+  ui.alert('✓ Stupac uklonjen.');
 }
 
 // ============================================================================
@@ -63,6 +92,29 @@ function getSplitColumns_() {
     AKCIJA_AVANS:    c.AKCIJA_AVANS    || 'AKCIJA_AVANS_RACUN',
     AKCIJA_FINAL:    c.AKCIJA_FINAL    || 'AKCIJA_FINALNI_RACUN'
   };
+}
+
+/**
+ * Avans za FINALNI račun — dopušta prazno/0 (single-pay), inače validira > 0.
+ * @returns {{ amount: number, error?: string }}
+ *   amount = 0 znači single-pay (bez deduction stavke).
+ */
+function readAdvanceForFinal_(rawValue) {
+  if (rawValue === null || rawValue === undefined || rawValue === '') {
+    return { amount: 0 };
+  }
+  var num = Number(rawValue);
+  if (isNaN(num)) {
+    return { amount: -1, error: 'AVANS sadrži "' + rawValue + '" — nije broj.' };
+  }
+  if (num === 0) return { amount: 0 };
+  if (num < 0) {
+    return { amount: -1, error: 'AVANS = ' + num + ' — mora biti 0 ili pozitivan.' };
+  }
+  if (!Number.isInteger(num)) {
+    return { amount: -1, error: 'AVANS mora biti cijeli broj (npr. 110, ne 110.50).' };
+  }
+  return { amount: num };
 }
 
 // ============================================================================
@@ -216,47 +268,58 @@ function promptAndCreateFinal_(row) {
   var data = getRowDataAsMap(sheet, row, headers);
   var ui = SpreadsheetApp.getUi();
 
-  var advanceVal = validatePaymentAmount(data[sc.ADVANCE_PAYMENT]);
-  if (!advanceVal.valid) {
-    ui.alert('ℹ️ Avans potreban za odbitak',
-      'FINALNI račun mora odbiti prethodni avans, ali avans nije unesen.\n\n' +
-      advanceVal.message + '\n\n' +
-      'Unesi iznos avansa u stupac "' + sc.ADVANCE_PAYMENT + '".',
-      ui.ButtonSet.OK);
+  var advRead = readAdvanceForFinal_(data[sc.ADVANCE_PAYMENT]);
+  if (advRead.error) {
+    ui.alert('ℹ️ Neispravan avans', advRead.error, ui.ButtonSet.OK);
     setCheckboxFalse_(sheet, row, sc.AKCIJA_FINAL);
     return;
   }
   var paymentVal = validatePaymentAmount(data[CONFIG.COLUMNS.PAYMENT]);
   if (!paymentVal.valid) {
-    ui.alert('ℹ️ Ostatak nije unesen',
-      'Stupac "' + CONFIG.COLUMNS.PAYMENT + '" treba sadržavati iznos OSTATKA (ne ukupnog).\n\n' +
+    ui.alert('ℹ️ Iznos uplate nije unesen',
+      'Stupac "' + CONFIG.COLUMNS.PAYMENT + '" mora sadržavati iznos.\n' +
+      '  • Single-pay (avans = 0/prazno): puni iznos\n' +
+      '  • Split (avans > 0): ostatak\n\n' +
       paymentVal.message,
       ui.ButtonSet.OK);
     setCheckboxFalse_(sheet, row, sc.AKCIJA_FINAL);
     return;
   }
 
-  var advance = advanceVal.amount;
+  var advance = advRead.amount;
   var remainder = paymentVal.amount;
-  var total = advance + remainder;
+  var isSinglePay = advance === 0;
+  var total = isSinglePay ? remainder : advance + remainder;
 
   var name = data[CONFIG.COLUMNS.NAME] || 'N/A';
   var email = data[CONFIG.COLUMNS.EMAIL] || 'N/A';
   var oib = data[CONFIG.COLUMNS.OIB] || '';
   var paymentType = data[CONFIG.COLUMNS.PAYMENT_TYPE] || CONFIG.DEFAULT_PAYMENT_TYPE;
 
-  // Upozorenje ako AVANS nije fiskaliziran
-  var avansStatusCol = findColumnIndex(headers, 'FIRA Avans Status');
-  var avansStatus = avansStatusCol !== -1 ? sheet.getRange(row, avansStatusCol).getValue() : '';
-  var avansWarning = avansStatus === 'SUCCESS' ? '' :
-    '\n⚠️ AVANS račun još nije uspješno kreiran (status: ' + (avansStatus || '(prazno)') + ')\n';
+  var amountBlock;
+  var avansWarning = '';
+  if (isSinglePay) {
+    amountBlock = '💰 Iznos: ' + total + ' ' + CONFIG.DEFAULT_CURRENCY + '   (single-pay, bez avansa)\n';
+  } else {
+    amountBlock =
+      '💰 Ukupno:   ' + total + ' ' + CONFIG.DEFAULT_CURRENCY + '\n' +
+      '   ‒ Avans:   -' + advance + ' ' + CONFIG.DEFAULT_CURRENCY + '\n' +
+      '   = Ostatak:  ' + remainder + ' ' + CONFIG.DEFAULT_CURRENCY + '\n';
+    var avansStatusCol = findColumnIndex(headers, 'FIRA Avans Status');
+    var avansStatus = avansStatusCol !== -1 ? sheet.getRange(row, avansStatusCol).getValue() : '';
+    if (avansStatus !== 'SUCCESS') {
+      avansWarning = '\n⚠️ AVANS račun još nije uspješno kreiran (status: ' + (avansStatus || '(prazno)') + ')\n';
+    }
+  }
 
-  var result = ui.alert('FINALNI RAČUN — odaberi tip dokumenta',
+  var title = isSinglePay
+    ? 'RAČUN (single-pay) — odaberi tip dokumenta'
+    : 'FINALNI RAČUN (split) — odaberi tip dokumenta';
+
+  var result = ui.alert(title,
     '👤 ' + name + '\n' +
     '🆔 OIB: ' + (oib || '(nije unesen)') + '\n' +
-    '💰 Ukupno:   ' + total + ' ' + CONFIG.DEFAULT_CURRENCY + '\n' +
-    '   ‒ Avans:   -' + advance + ' ' + CONFIG.DEFAULT_CURRENCY + '\n' +
-    '   = Ostatak:  ' + remainder + ' ' + CONFIG.DEFAULT_CURRENCY + '\n' +
+    amountBlock +
     '💳 ' + paymentType + '\n' +
     '📧 ' + email + avansWarning + '\n' +
     '── Odaberi tip ──\n' +
@@ -378,21 +441,23 @@ function createFinalInvoiceForRow(row, suppressDialogs, invoiceTypeOverride) {
     var rowData = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
     var data = mapHeadersToValues(headers, rowData);
 
-    var advanceVal = validatePaymentAmount(data[sc.ADVANCE_PAYMENT]);
-    if (!advanceVal.valid) throw new Error('AVANS (potreban za odbitak) — ' + advanceVal.message);
+    var advRead = readAdvanceForFinal_(data[sc.ADVANCE_PAYMENT]);
+    if (advRead.error) throw new Error('AVANS — ' + advRead.error);
     var paymentVal = validatePaymentAmount(data[CONFIG.COLUMNS.PAYMENT]);
-    if (!paymentVal.valid) throw new Error('OSTATAK — ' + paymentVal.message);
+    if (!paymentVal.valid) throw new Error('IZNOS UPLATE — ' + paymentVal.message);
 
-    var advance = advanceVal.amount;
+    var advance = advRead.amount;
     var remainder = paymentVal.amount;
-    var total = advance + remainder;
+    var isSinglePay = advance === 0;
+    var total = isSinglePay ? remainder : advance + remainder;
 
     var name = getVal(data, CONFIG.COLUMNS.NAME);
     var taxRate = CONFIG.VAT_ENABLED ? CONFIG.DEFAULT_TAX_RATE : 0;
 
     var serviceItem = {
       name: CONFIG.SERVICE_NAME,
-      description: 'Registration / Registracija sudionika: ' + name + ' (ukupan iznos)',
+      description: 'Registration / Registracija sudionika: ' + name +
+        (isSinglePay ? '' : ' (ukupan iznos)'),
       price: total,
       quantity: 1,
       unit: 'usluga',
@@ -400,21 +465,24 @@ function createFinalInvoiceForRow(row, suppressDialogs, invoiceTypeOverride) {
     };
     if (CONFIG.DEFAULT_KPD_CODE) serviceItem.kpdCode = CONFIG.DEFAULT_KPD_CODE;
 
-    var advanceDeduction = {
-      name: 'Advance paid / Plaćeni avans',
-      description: 'Deduction of previously paid advance / Odbitak prethodno plaćenog avansa',
-      price: -advance,
-      quantity: 1,
-      unit: 'usluga',
-      taxRate: taxRate
-    };
+    var lineItems = [serviceItem];
+    if (!isSinglePay) {
+      lineItems.push({
+        name: 'Advance paid / Plaćeni avans',
+        description: 'Deduction of previously paid advance / Odbitak prethodno plaćenog avansa',
+        price: -advance,
+        quantity: 1,
+        unit: 'usluga',
+        taxRate: taxRate
+      });
+    }
 
     var nettoFinal = remainder;
     var taxValueFinal = CONFIG.VAT_ENABLED ? nettoFinal * taxRate : 0;
     var bruttoFinal = nettoFinal + taxValueFinal;
 
     var payload = buildSplitPayload_(headers, rowData, {
-      lineItems: [serviceItem, advanceDeduction],
+      lineItems: lineItems,
       netto: nettoFinal,
       brutto: bruttoFinal,
       taxValue: taxValueFinal,
@@ -436,13 +504,15 @@ function createFinalInvoiceForRow(row, suppressDialogs, invoiceTypeOverride) {
     markSplitRowAsProcessed_(sheet, row, 'FINAL', 'SUCCESS', new Date(), docUrl);
 
     var isFiscal = payload.invoiceType === 'FISKALNI_RAČUN';
-    var title = isFiscal ? '✅ FINALNI fiskalni račun kreiran' : '✅ FINALNI račun kreiran';
+    var titleSuffix = isSinglePay ? 'račun' : 'FINALNI račun';
+    var title = '✅ ' + (isFiscal ? 'Fiskalni ' + titleSuffix : titleSuffix) + ' kreiran';
     if (!suppressDialogs) {
-      ui.alert(title,
-        'Ukupno: ' + total + ' ' + CONFIG.DEFAULT_CURRENCY + '\n' +
-        '− Avans: -' + advance + '\n' +
-        '= Naplaćeno: ' + remainder + ' ' + CONFIG.DEFAULT_CURRENCY,
-        ui.ButtonSet.OK);
+      var body = isSinglePay
+        ? 'Iznos: ' + total + ' ' + CONFIG.DEFAULT_CURRENCY + '   (single-pay, bez avansa)'
+        : 'Ukupno: ' + total + ' ' + CONFIG.DEFAULT_CURRENCY + '\n' +
+          '− Avans: -' + advance + '\n' +
+          '= Naplaćeno: ' + remainder + ' ' + CONFIG.DEFAULT_CURRENCY;
+      ui.alert(title, body, ui.ButtonSet.OK);
     }
     SpreadsheetApp.getActiveSpreadsheet().toast(title, 'FIRA', 5);
 
