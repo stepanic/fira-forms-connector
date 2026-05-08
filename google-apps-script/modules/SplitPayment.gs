@@ -680,7 +680,13 @@ function markSplitRowAsProcessed_(sheet, row, type, status, timestamp, documentU
   sheet.getRange(row, tsCol).setValue(timestamp);
 
   if (documentUrl) {
-    sheet.getRange(row, urlCol).setFormula('=HYPERLINK("' + documentUrl + '"; "Otvori u FIRA")');
+    // RichText link umjesto =HYPERLINK formule — Google Sheets auto-extenda
+    // formule u nove Form redove, što propagira tuđi invoice URL u prazne redove.
+    var richLink = SpreadsheetApp.newRichTextValue()
+      .setText('Otvori u FIRA')
+      .setLinkUrl(documentUrl)
+      .build();
+    sheet.getRange(row, urlCol).setRichTextValue(richLink);
   } else {
     sheet.getRange(row, urlCol).setValue('');
   }
