@@ -652,6 +652,9 @@ function buildPayload(headers, rowData, invoiceTypeOverride) {
 
   var location = parseCityAndCountry(cityCountry);
 
+  // Per-row TERMIN override (no-op ako event nema CONFIG.TERMIN_OVERRIDES)
+  var termin = resolveTerminOverride_(data);
+
   // VAT izračun
   var taxRate = CONFIG.VAT_ENABLED ? CONFIG.DEFAULT_TAX_RATE : 0;
   var netto = payment;
@@ -667,7 +670,7 @@ function buildPayload(headers, rowData, invoiceTypeOverride) {
 
   // Line item
   var lineItem = {
-    name: CONFIG.SERVICE_NAME,
+    name: termin.serviceName,
     description: 'Registracija sudionika: ' + name,
     price: payment,
     quantity: 1,
@@ -719,7 +722,7 @@ function buildPayload(headers, rowData, invoiceTypeOverride) {
       name: name,
       address1: '',
       address2: '',
-      city: CONFIG.DELIVERY_PLACE,
+      city: termin.deliveryPlace,
       country: 'HR',
       phone: '',
       zipCode: '',
@@ -957,6 +960,46 @@ function mapHeadersToValues(headers, rowData) {
 function getVal(data, key, def) {
   var v = data[key];
   return (v !== undefined && v !== null && v !== '') ? v : (def || '');
+}
+
+/**
+ * Per-row override za eventove koji kroz JEDNU formu primaju prijave na
+ * VIŠE termina/lokacija (npr. cunski-2026: Termin I/II u Ćunskim + Termin III na Krku).
+ *
+ * Vraća { serviceName, deliveryPlace, conferenceDate } — uvijek popunjeno,
+ * fallback na CONFIG defaults. No-op (vraća samo defaults) ako CONFIG nema
+ * TERMIN_OVERRIDES ili COLUMNS.TERMIN — pa je siguran za sve eventove.
+ *
+ * Match strategija:
+ *   1. EXACT na raw vrijednost (Google Forms čuva original whitespace)
+ *   2. Normalized (trim + collapse whitespace) — tolerira sitne varijante
+ */
+function resolveTerminOverride_(data) {
+  var result = {
+    serviceName: CONFIG.SERVICE_NAME,
+    deliveryPlace: CONFIG.DELIVERY_PLACE,
+    conferenceDate: CONFIG.CONFERENCE_DATE
+  };
+  if (!CONFIG.TERMIN_OVERRIDES || !CONFIG.COLUMNS.TERMIN) return result;
+  var raw = data[CONFIG.COLUMNS.TERMIN];
+  if (!raw) return result;
+
+  var override = CONFIG.TERMIN_OVERRIDES[raw];
+  if (!override) {
+    var normalized = String(raw).trim().replace(/\s+/g, ' ');
+    for (var k in CONFIG.TERMIN_OVERRIDES) {
+      if (k.trim().replace(/\s+/g, ' ') === normalized) {
+        override = CONFIG.TERMIN_OVERRIDES[k];
+        break;
+      }
+    }
+  }
+  if (override) {
+    if (override.serviceName)    result.serviceName    = override.serviceName;
+    if (override.deliveryPlace)  result.deliveryPlace  = override.deliveryPlace;
+    if (override.conferenceDate) result.conferenceDate = override.conferenceDate;
+  }
+  return result;
 }
 
 function roundTwo(n) {

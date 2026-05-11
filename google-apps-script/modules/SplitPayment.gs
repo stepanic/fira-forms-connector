@@ -364,9 +364,10 @@ function createAdvanceInvoiceForRow(row, suppressDialogs, invoiceTypeOverride) {
 
     var name = getVal(data, CONFIG.COLUMNS.NAME);
     var taxRate = CONFIG.VAT_ENABLED ? CONFIG.DEFAULT_TAX_RATE : 0;
+    var termin = resolveTerminOverride_(data);
 
     var lineItem = {
-      name: 'Advance / Predujam — ' + CONFIG.SERVICE_NAME,
+      name: 'Advance / Predujam — ' + termin.serviceName,
       description: 'Advance payment for reservation / Predujam za rezervaciju mjesta — ' + name,
       price: amount,
       quantity: 1,
@@ -453,9 +454,10 @@ function createFinalInvoiceForRow(row, suppressDialogs, invoiceTypeOverride) {
 
     var name = getVal(data, CONFIG.COLUMNS.NAME);
     var taxRate = CONFIG.VAT_ENABLED ? CONFIG.DEFAULT_TAX_RATE : 0;
+    var termin = resolveTerminOverride_(data);
 
     var serviceItem = {
-      name: CONFIG.SERVICE_NAME,
+      name: termin.serviceName,
       description: 'Registration / Registracija sudionika: ' + name +
         (isSinglePay ? '' : ' (ukupan iznos)'),
       price: total,
@@ -547,6 +549,7 @@ function buildSplitPayload_(headers, rowData, opts) {
     || CONFIG.DEFAULT_INVOICE_TYPE;
 
   var location = parseCityAndCountry(cityCountry);
+  var termin = resolveTerminOverride_(data);
   var now = new Date();
   var orderId = Math.floor(Math.random() * 9000000) + 1000000;
   var internalNote = buildInternalNote(gender, yearOfBirth, occupation);
@@ -568,7 +571,7 @@ function buildSplitPayload_(headers, rowData, opts) {
     },
     shippingAddress: {
       name: name, address1: '', address2: '',
-      city: CONFIG.DELIVERY_PLACE, country: 'HR',
+      city: termin.deliveryPlace, country: 'HR',
       phone: '', zipCode: '', email: ''
     },
     taxValue: roundTwo(opts.taxValue),
