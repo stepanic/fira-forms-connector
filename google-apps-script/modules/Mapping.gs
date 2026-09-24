@@ -273,7 +273,18 @@ function addFiscalColumns() {
   var lastRow = sheet.getLastRow();
   var addedColumns = [];
 
+  // Uplata stupac — organizator upisuje iznos po retku (npr. 50 ili 56.62)
+  if (findColumnIndex(headers, CONFIG.COLUMNS.PAYMENT) === -1) {
+    var payCol = sheet.getLastColumn() + 1;
+    sheet.getRange(1, payCol).setValue(CONFIG.COLUMNS.PAYMENT);
+    if (lastRow > 1) {
+      sheet.getRange(2, payCol, lastRow - 1, 1).setNumberFormat('0.00');
+    }
+    addedColumns.push(CONFIG.COLUMNS.PAYMENT);
+  }
+
   // OIB stupac
+  headers = getHeaders(sheet);
   if (findColumnIndex(headers, CONFIG.COLUMNS.OIB) === -1) {
     var col = sheet.getLastColumn() + 1;
     sheet.getRange(1, col).setValue(CONFIG.COLUMNS.OIB);
