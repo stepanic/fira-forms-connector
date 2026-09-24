@@ -29,12 +29,27 @@ defines `AKCIJA_AVANS:` in `COLUMNS`.
 ## Adding a new event
 
 1. `mkdir google-apps-script/events/<slug>` (e.g. `zagreb-2026`)
-2. Copy `events/badija-2026/Config.gs` to the new folder, edit values
-3. `npm run build:gas` — confirms it builds
-4. Create a new GAS project at <https://script.google.com> (or in a Sheet:
-   Extensions → Apps Script), copy its scriptId from the URL
-5. `npm run push:gas -- <slug> <scriptId>` — first push creates `.clasp.json`
+2. Copy the closest existing `events/<slug>/Config.gs` (one-day regional
+   event → `sinj-2026` / `varazdin-2026`; split payment → `badija-2026`), edit values
+3. Put the **exact** response-sheet headers into `COLUMNS` — matching is exact,
+   Google Forms leaves trailing spaces (`'Godina rođenja '`), and organizers name
+   manual columns freely (Varaždin has `Uplate`, not `Uplata`). The Sheets API is
+   disabled in the clasp GCP project and Drive export only has `drive.file`
+   scope, so read headers from a browser tab on the Sheet:
+   `fetch('/spreadsheets/d/<id>/export?format=tsv&gid=<gid>')`
+4. `npm run build:gas` — confirms it builds
+5. Create the **bound** GAS project from an empty dir:
+   `clasp create --title <Name> --parentId <sheetId>` — **without `--type sheets`**:
+   with `--type`, clasp ignores `--parentId` and creates a new empty Spreadsheet.
+   The Sheet must be shared with the clasp account first.
+6. `npm run push:gas -- <slug> <scriptId>` — first push creates `.clasp.json`
    inside `dist/<slug>/`, subsequent pushes reuse it
+7. Organizer, once, in the Sheet (FIRA Actions menu): 🔐 Autoriziraj dozvole →
+   ⚙️ Postavi API ključ → 🔧 Instaliraj onEdit trigger (clasp can't create
+   triggers) → 📋 Dodaj stupce za fiskalizaciju (adds payment, OIB, Payment Type,
+   Tip dokumenta, AKCIJA checkboxes — skips existing ones)
+
+Payment amounts may have up to 2 decimals (`56.62`, or text `56,62`).
 
 ## Day-to-day
 
