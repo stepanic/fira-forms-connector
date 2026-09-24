@@ -16,8 +16,8 @@
  *         Brutto = ostatak
  *
  * Stupci u Sheetu (definirani u CONFIG.COLUMNS event configa):
- *   ADVANCE_PAYMENT — iznos uplaćenog avansa (cijeli broj > 0)
- *   PAYMENT         — iznos ostatka (cijeli broj > 0)  [istoimeni stupac kao single-flow]
+ *   ADVANCE_PAYMENT — iznos uplaćenog avansa (> 0, najviše 2 decimale)
+ *   PAYMENT         — iznos ostatka (> 0, najviše 2 decimale)  [istoimeni stupac kao single-flow]
  *   AKCIJA_AVANS    — checkbox za kreiranje AVANS računa
  *   AKCIJA_FINAL    — checkbox za kreiranje FINALNOG računa
  *
@@ -103,16 +103,13 @@ function readAdvanceForFinal_(rawValue) {
   if (rawValue === null || rawValue === undefined || rawValue === '') {
     return { amount: 0 };
   }
-  var num = Number(rawValue);
+  var num = parseMoneyAmount_(rawValue);
   if (isNaN(num)) {
-    return { amount: -1, error: 'AVANS sadrži "' + rawValue + '" — nije broj.' };
+    return { amount: -1, error: 'AVANS sadrži "' + rawValue + '" — nije broj s najviše 2 decimale.' };
   }
   if (num === 0) return { amount: 0 };
   if (num < 0) {
     return { amount: -1, error: 'AVANS = ' + num + ' — mora biti 0 ili pozitivan.' };
-  }
-  if (!Number.isInteger(num)) {
-    return { amount: -1, error: 'AVANS mora biti cijeli broj (npr. 110, ne 110.50).' };
   }
   return { amount: num };
 }
@@ -230,7 +227,7 @@ function promptAndCreateAdvance_(row) {
   if (!advanceVal.valid) {
     ui.alert('ℹ️ Avans nije unesen',
       advanceVal.message + '\n\n' +
-      'Unesi iznos avansa u stupac "' + sc.ADVANCE_PAYMENT + '" (cijeli broj > 0).',
+      'Unesi iznos avansa u stupac "' + sc.ADVANCE_PAYMENT + '" (> 0, npr. 110 ili 110.50).',
       ui.ButtonSet.OK);
     setCheckboxFalse_(sheet, row, sc.AKCIJA_AVANS);
     return;
@@ -289,7 +286,7 @@ function promptAndCreateFinal_(row) {
   var advance = advRead.amount;
   var remainder = paymentVal.amount;
   var isSinglePay = advance === 0;
-  var total = isSinglePay ? remainder : advance + remainder;
+  var total = isSinglePay ? remainder : roundTwo(advance + remainder);
 
   var name = data[CONFIG.COLUMNS.NAME] || 'N/A';
   var email = data[CONFIG.COLUMNS.EMAIL] || 'N/A';
@@ -450,7 +447,7 @@ function createFinalInvoiceForRow(row, suppressDialogs, invoiceTypeOverride) {
     var advance = advRead.amount;
     var remainder = paymentVal.amount;
     var isSinglePay = advance === 0;
-    var total = isSinglePay ? remainder : advance + remainder;
+    var total = isSinglePay ? remainder : roundTwo(advance + remainder);
 
     var name = getVal(data, CONFIG.COLUMNS.NAME);
     var taxRate = CONFIG.VAT_ENABLED ? CONFIG.DEFAULT_TAX_RATE : 0;

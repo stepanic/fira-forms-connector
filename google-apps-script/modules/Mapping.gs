@@ -6,7 +6,7 @@
  *
  * CHANGELOG v3:
  * - UPLATA stupac je OBAVEZAN — nema default cijene
- * - Validacija: UPLATA mora sadržavati cijeli broj (integer) > 0
+ * - Validacija: UPLATA mora sadržavati iznos > 0 (najviše 2 decimale)
  * - Info dialog ako UPLATA nije ispravno popunjena
  *
  * CHANGELOG v2 (triple-check fixes):
@@ -162,7 +162,7 @@ function onCheckboxEdit(e) {
   var paymentType = data[CONFIG.COLUMNS.PAYMENT_TYPE] || CONFIG.DEFAULT_PAYMENT_TYPE;
   var oib = data[CONFIG.COLUMNS.OIB] || '';
 
-  // Validacija UPLATA — mora biti cijeli broj > 0
+  // Validacija UPLATA — mora biti iznos > 0 (najviše 2 decimale)
   var paymentRaw = data[CONFIG.COLUMNS.PAYMENT];
   var paymentValidation = validatePaymentAmount(paymentRaw);
 
@@ -410,7 +410,7 @@ function createFiraInvoicesBulk() {
       'Sljedeći sudionici nemaju valjanu uplatu u stupcu UPLATA\n' +
       'i neće biti uključeni u bulk obradu:\n\n' +
       skippedNoPayment.join('\n') + '\n\n' +
-      'Unesite iznos uplate (cijeli broj) pa pokušajte ponovo.',
+      'Unesite iznos uplate (npr. 40 ili 56.62) pa pokušajte ponovo.',
       ui.ButtonSet.OK
     );
   }
@@ -544,7 +544,35 @@ function createFiraInvoiceForRow(row, suppressDialogs, invoiceTypeOverride) {
 // ============================================================================
 
 /**
- * Provjeri da UPLATA stupac sadrži valjani cijeli broj > 0.
+ * Pretvori vrijednost ćelije u iznos (broj s najviše 2 decimale).
+ * Prihvaća broj iz Sheetsa ili tekst s decimalnim zarezom ("56,62").
+ *
+ * @param {*} rawValue
+ * @returns {number} iznos zaokružen na cente, NaN ako nije broj
+ *   ili ima više od 2 decimale
+ */
+function parseMoneyAmount_(rawValue) {
+  var num = toNumber_(rawValue);
+  if (isNaN(num)) return NaN;
+  var cents = Math.round(num * 100);
+  // Tolerancija za float šum iz Sheetsa (npr. 56.620000000001)
+  if (Math.abs(num * 100 - cents) > 1e-6) return NaN;
+  return cents / 100;
+}
+
+/** Broj iz ćelije; tekst smije imati decimalni zarez i razmake. */
+function toNumber_(rawValue) {
+  return typeof rawValue === 'string'
+    ? Number(rawValue.replace(/\s/g, '').replace(',', '.'))
+    : Number(rawValue);
+}
+
+function isMoneyAmount_(n) {
+  return typeof n === 'number' && !isNaN(n) && Math.abs(n * 100 - Math.round(n * 100)) < 1e-6;
+}
+
+/**
+ * Provjeri da UPLATA stupac sadrži valjani iznos > 0 (najviše 2 decimale).
  *
  * @param {*} rawValue - Vrijednost iz stupca UPLATA
  * @returns {{ valid: boolean, amount?: number, message?: string }}
@@ -556,19 +584,28 @@ function validatePaymentAmount(rawValue) {
       valid: false,
       message: 'Stupac UPLATA je prazan.\n\n' +
         'Ne postoji evidentirana uplata na temelju koje se može izdati račun.\n' +
-        'Unesite iznos uplate kao cijeli broj (npr. 40) prije kreiranja računa.'
+        'Unesite iznos uplate (npr. 40 ili 56.62) prije kreiranja računa.'
     };
   }
 
-  var num = Number(rawValue);
-
   // Nije broj uopće (tekst, specijalnih znakovi...)
-  if (isNaN(num)) {
+  if (isNaN(toNumber_(rawValue))) {
     return {
       valid: false,
       message: 'Stupac UPLATA sadrži "' + rawValue + '" — nije broj.\n\n' +
         'Ne postoji evidentirana uplata na temelju koje se može izdati račun.\n' +
-        'Unesite iznos uplate kao cijeli broj (npr. 40).'
+        'Unesite iznos uplate (npr. 40 ili 56.62).'
+    };
+  }
+
+  var num = parseMoneyAmount_(rawValue);
+
+  // Više od 2 decimale (npr. 40.505)
+  if (isNaN(num)) {
+    return {
+      valid: false,
+      message: 'Stupac UPLATA sadrži ' + rawValue + ' — najviše 2 decimale.\n\n' +
+        'Unesite iznos uplate u eurima i centima (npr. 56.62).'
     };
   }
 
@@ -578,17 +615,7 @@ function validatePaymentAmount(rawValue) {
       valid: false,
       message: 'Stupac UPLATA sadrži ' + num + ' — mora biti pozitivan iznos.\n\n' +
         'Ne postoji evidentirana uplata na temelju koje se može izdati račun.\n' +
-        'Unesite stvarni iznos uplate kao cijeli broj (npr. 40).'
-    };
-  }
-
-  // Decimalni broj (nije cijeli)
-  if (!Number.isInteger(num)) {
-    return {
-      valid: false,
-      message: 'Stupac UPLATA sadrži ' + rawValue + ' — mora biti cijeli broj.\n\n' +
-        'Ne postoji evidentirana uplata na temelju koje se može izdati račun.\n' +
-        'Unesite iznos uplate kao cijeli broj bez decimala (npr. 40, ne 40.50).'
+        'Unesite stvarni iznos uplate (npr. 40 ili 56.62).'
     };
   }
 
@@ -781,8 +808,8 @@ function validatePayload(payload) {
     if (price === null || price === undefined || price <= 0) {
       errors.push('Stupac UPLATA: ne postoji evidentirana uplata na temelju koje se može izdati račun');
     }
-    if (!Number.isInteger(price)) {
-      errors.push('Stupac UPLATA: iznos mora biti cijeli broj (npr. 40), ne decimalni');
+    if (!isMoneyAmount_(price)) {
+      errors.push('Stupac UPLATA: iznos smije imati najviše 2 decimale (npr. 56.62)');
     }
   }
 
